@@ -641,10 +641,6 @@ public:
 
     const std::string& getStorePorts(blockID id) const;
 
-    void setGetPtrConst(blockID id, int c);
-
-    int getGetPtrConst(blockID id) const;
-
     /**
      * @brief Defines the value of a constant block.
      * @param id Identifier of the block.
@@ -1116,7 +1112,7 @@ public:
     bool addElasticBuffersBB_sc(double Period = 0, double BufferDelay = 0, bool MaxThroughput = false, double coverage = 0, int timeout = -1, bool first_MG = false);
 
     void addBorderBuffers();
-    void findMCLSQ_load_channels();
+    void removeBuffersFromMC_LSQ();
     /**
      * @brief Creates buffers for all those channels annotated with buffers.
      * The information in the channels is deleted.
@@ -1237,7 +1233,6 @@ private:
         std::string storeOffsets;
         std::string loadPorts;
         std::string storePorts;
-        int getptrc; // Lana: constant for getelementpointer dimensions
     };
 
     struct Port {
