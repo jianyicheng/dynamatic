@@ -8,7 +8,7 @@ build-docker: test-docker
 	echo "Dynamatic has been installed successfully!"
 
 test-docker:
-	(cd docker; docker build --build-arg UID=$(user) --build-arg GID=$(group) . --tag dhls20)
+	(cd Docker; docker build --build-arg UID=$(user) --build-arg GID=$(group) . --tag dhls20)
 
 shell:
 	docker run -it -u $(user) -v $(shell pwd):/workspace dhls20:latest /bin/bash
