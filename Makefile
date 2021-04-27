@@ -29,20 +29,20 @@ build:
 	 make -j4 || exit 1)
 	
 	# build Dynamatic
-	mkdir -p $(dhls)/dhls/elastic-circuits/build
-	(cd $(dhls)/dhls/elastic-circuits/build; \
+	mkdir -p $(dhls)/elastic-circuits/build
+	(cd $(dhls)/elastic-circuits/build; \
 	 cmake .. \
 	 -DLLVM_ROOT=../../../llvm/build \
 	 -DCMAKE_BUILD_TYPE=DEBUG || exit 1)
-	(cd $(dhls)/dhls/elastic-circuits/build; \
+	(cd $(dhls)/elastic-circuits/build; \
 	 make -j4 || exit 1)
 	
 	# buffer
-	mkdir -p $(dhls)/dhls/Buffers/bin
-	(cd $(dhls)/dhls/Buffers; make || exit 1)
+	mkdir -p $(dhls)/Buffers/bin
+	(cd $(dhls)/Buffers; make || exit 1)
 	# dot2vhdl
-	mkdir -p $(dhls)/dhls/dot2vhdl/bin
-	(cd $(dhls)/dhls/dot2vhdl; make || exit 1)
+	mkdir -p $(dhls)/dot2vhdl/bin
+	(cd $(dhls)/dot2vhdl; make || exit 1)
 
 rebuild:
 	set -e # Abort if one of the commands fail
