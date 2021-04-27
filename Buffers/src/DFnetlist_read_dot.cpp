@@ -173,6 +173,9 @@ static bool readPorts(DFnetlist_Impl& DF, blockID id, Agnode_t* v, bool input)
     char* in_out = (char *) string(input ? "in" : "out").c_str();
     const char* attr = agget(v, in_out);
 
+    if (DF.getBlockType(id) == FUNC_EXIT & input == false)
+        return true;
+
     if ((attr = agget(v, in_out)) != nullptr) {
         istringstream iss(attr);
         vector<string> tokens {istream_iterator<string>{iss},
@@ -524,6 +527,29 @@ static bool readLSQParams(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
     return true;
 }
 
+// Lana 04/10/19 read LSQ params for json
+static bool readGetPtrConst(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
+{
+    string block_name = DF.getBlockName(id);
+
+    if (DF.getBlockType(id) == OPERATOR) {
+
+        const char* attr = agget(v, (char *) "constants");
+        if (attr != nullptr and strlen(attr) > 0) {
+            int t = getPositiveInteger(attr);
+            if (t < 0) {
+                DF.setError("Block " + block_name + ": wrong value for GetPtr constants.");
+                return false;
+            }
+
+             DF.setGetPtrConst(id, t);
+        }
+
+    }
+
+    return true;
+}
+
 static bool readValue(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
 {
     string block_name = DF.getBlockName(id);
@@ -557,14 +583,21 @@ static bool readValue(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
 // Reads the attributes of elastic buffers (slots and transparency)
 static bool readBufferAttributes(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
 {
+    if (DF.getBlockType(id) != ELASTIC_BUFFER) return true;
+
+
     string block_name = DF.getBlockName(id);
+    //cout << "setting buffer attributes for " << block_name << endl;
+
     const char* attr = agget(v, (char *) "slots");
     if (attr != nullptr and strlen(attr) > 0) {
         if (DF.getBlockType(id) != ELASTIC_BUFFER) {
             DF.setError("Block " + block_name + ": slots can only be defined for elastic buffers.");
             return false;
         }
+        cout << "SHAB: attr for buffer " << DF.getBlockName(id) << ": " << attr << endl;
         int slots = getPositiveInteger(attr);
+        cout << "SHAB: slots for buffer " << DF.getBlockName(id) << ": " << slots << endl;
         if (slots <= 0) {
             DF.setError("Block " + block_name + ": wrong value for slots.");
             return false;
@@ -593,6 +626,7 @@ static bool readBufferAttributes(DFnetlist_Impl& DF, blockID id, Agnode_t* v)
 // Reads the attributes of elastic buffers (slots and transparency)
 static bool readChannelBufferAttributes(DFnetlist_Impl& DF, channelID c, Agnode_t* v)
 {
+    //cout << "setting channel buffer attributes for " << DF.getChannelName(c) << endl;
     const char* attr = agget(v, (char *) "slots");
     int slots = 0;
     if (attr != nullptr and strlen(attr) > 0) {
@@ -660,6 +694,7 @@ bool DFnetlist_Impl::readDataflowDot(FILE *f)
     // Traverse the set of nodes
     for (Agnode_t* v = agfstnode(g); v; v = agnxtnode(g,v)) {
         string node_name = string(agnameof(v));
+//        cout << "currently traversing node " << node_name << endl;
 
         if (not goodIdentifier(*this, node_name)) {
             setError("Block " + node_name + ": invalid identifier.");
@@ -667,6 +702,7 @@ bool DFnetlist_Impl::readDataflowDot(FILE *f)
         }
 
         const char* attr = agget(v, (char *) "type");
+  //      cout << "\ttype is " << attr << endl;
         if (attr == nullptr) {
             setError("Block " + node_name + ": type not defined.");
             return false;
@@ -729,6 +765,11 @@ bool DFnetlist_Impl::readDataflowDot(FILE *f)
 
         if (not readLSQParams(*this, id, v)) return false;
 
+        // Reading getelementptr array dimensions
+        if (not readGetPtrConst(*this, id, v)) return false;
+
+        // SHAB: to support naive buffer placement
+        if (not readBufferAttributes(*this, id, v)) return false;
     }
 
     // Traverse the set of edges
