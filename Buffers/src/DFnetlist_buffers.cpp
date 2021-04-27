@@ -519,6 +519,38 @@ bool DFnetlist_Impl::addElasticBuffersBB_sc(double Period, double BufferDelay, b
     // Lana 05/07/19 If nothing to optimize, exit
     if (coverage == 0)
         return false;
+<<<<<<< HEAD
+=======
+    }
+
+    findMCLSQ_load_channels();
+    addBorderBuffers();
+
+    // Lana 03/05/20 Muxes and merges have internal buffers, fork going to lsq must have one after 
+    ForAllChannels(c) {
+        if ((getBlockType(getSrcBlock(c)) == MUX)
+            || (getBlockType(getSrcBlock(c)) == MERGE && getPorts(getSrcBlock(c), INPUT_PORTS).size() > 1)) {
+            setChannelTransparency(c, 1);
+            setChannelBufferSize(c, 1);
+        }
+        if (getBlockType(getSrcBlock(c)) == FORK && getBlockType(getDstBlock(c)) == BRANCH) {
+            if (getPortWidth(getDstPort(c)) == 0) {
+                bool lsq_fork = false;
+
+                ForAllOutputPorts(getSrcBlock(c), out_p) {
+                    if (getBlockType(getDstBlock(getConnectedChannel(out_p))) == LSQ)
+                        lsq_fork = true;
+                    
+                }
+                if (lsq_fork) {
+                    setChannelTransparency(c, 0);
+                    setChannelBufferSize(c, 1);
+                }
+            }
+        }
+
+    }                    
+>>>>>>> b1f302209bb6b2185f0525cc41fb2da1d1773a5b
 
     addBorderBuffers();
 //    removeBuffersFromMC_LSQ();
@@ -594,6 +626,21 @@ bool DFnetlist_Impl::addElasticBuffersBB_sc(double Period, double BufferDelay, b
             return false;
         }
 
+<<<<<<< HEAD
+=======
+        if (MaxThroughput) {
+            for (auto sub_mg: components[i]) {
+                cout << "************************" << endl;
+                cout << "*** Throughput for MG " << sub_mg << " in disjoint MG " << i << ": ";
+                cout << fixed << setprecision(2) << milp[milpVars_sc[i].th_MG[sub_mg]] << " ***" << endl;
+                cout << "************************" << endl;
+                if (first_MG) break;
+            }
+        }
+
+         //dumpMilpSolution(milp, milpVars_sc[i]);
+
+>>>>>>> b1f302209bb6b2185f0525cc41fb2da1d1773a5b
         // Add channels
         vector<channelID> buffers;
         for (channelID c: MG_disjoint[i].getChannels()) {
@@ -633,6 +680,7 @@ bool DFnetlist_Impl::addElasticBuffersBB_sc(double Period, double BufferDelay, b
             return false;
         }
     }
+
 
     cout << "--------------------------------------" << endl;
     cout << "Initiating MILP for remaining channels" << endl;
@@ -717,6 +765,11 @@ bool DFnetlist_Impl::createPathConstraints(Milp_Model& milp, milpVarsEB& Vars, d
 
 
     ForAllChannels(c) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
+
         int v1 =  Vars.time_path[getSrcPort(c)];
         int v2 =  Vars.time_path[getDstPort(c)];
         int R = Vars.buffer_flop[c];
@@ -805,6 +858,10 @@ bool DFnetlist_Impl::createPathConstraints_sc(Milp_Model &milp, milpVarsEB &Vars
 
     //cout << "   path constraints for channels in MG" << endl;
     for (channelID c: MG_disjoint[mg].getChannels()) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
         int v1 =  Vars.time_path[getSrcPort(c)];
         int v2 =  Vars.time_path[getDstPort(c)];
         int R = Vars.buffer_flop[c];
@@ -989,6 +1046,11 @@ bool DFnetlist_Impl::createPathConstraints_remaining(Milp_Model &milp, milpVarsE
     if (not hasPeriod) Period = INFINITY;
 
     ForAllChannels(c) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
+
         int v1 =  Vars.time_path[getSrcPort(c)];
         int v2 =  Vars.time_path[getDstPort(c)];
         int R = Vars.buffer_flop[c];
@@ -1072,6 +1134,10 @@ bool DFnetlist_Impl::createElasticityConstraints(Milp_Model& milp, milpVarsEB& V
 
     // Create the variables and constraints for all channels
     ForAllChannels(c) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
 
         int v1 = Vars.time_elastic[getSrcPort(c)];
         int v2 = Vars.time_elastic[getDstPort(c)];
@@ -1119,11 +1185,42 @@ bool DFnetlist_Impl::createElasticityConstraints_sc(Milp_Model &milp, milpVarsEB
     // Create the variables and constraints for all channels
     //cout << "   elasticity constraints for channels in MG" << endl;
     for (channelID c: MG_disjoint[mg].getChannels()) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
+
         int v1 = Vars.time_elastic[getSrcPort(c)];
         int v2 = Vars.time_elastic[getDstPort(c)];
         int slots = Vars.buffer_slots[c];
         int hasbuf = Vars.has_buffer[c];
         int hasflop = Vars.buffer_flop[c];
+
+        // Lana 03/05/20 Muxes and merges have internal buffers, fork going to lsq must have one after
+        if ((getBlockType(getSrcBlock(c)) == MUX)
+            || (getBlockType(getSrcBlock(c)) == MERGE && getPorts(getSrcBlock(c), INPUT_PORTS).size() > 1)) {
+            slots = 1; 
+            hasbuf = 1; 
+            hasflop = 0;
+        }
+
+        if (getBlockType(getSrcBlock(c)) == FORK && getBlockType(getDstBlock(c)) == BRANCH) {
+            if (getPortWidth(getDstPort(c)) == 0) {
+                bool lsq_fork = false;
+
+                ForAllOutputPorts(getSrcBlock(c), out_p) {
+                    if (getBlockType(getDstBlock(getConnectedChannel(out_p))) == LSQ)
+                        lsq_fork = true;
+                    
+                }
+                if (lsq_fork) {
+                    slots = 1; 
+                    hasbuf = 1; 
+                    hasflop = 1;
+                }
+            }
+        }
+        
 
         // v2 >= v1 - big_constant*R (path constraint: at least one slot)
         milp.newRow ( {{-1,v1}, {1,v2}, {big_constant, hasflop}}, '>', 0);
@@ -1200,6 +1297,10 @@ bool DFnetlist_Impl::createElasticityConstraints_remaining(Milp_Model &milp, mil
 
     // Create the variables and constraints for all channels
     ForAllChannels(c) {
+        // Lana 02.05.20. paths from/to memory do not need buffers
+        if (getBlockType(getDstBlock(c)) == LSQ || getBlockType(getSrcBlock(c)) == LSQ
+         || getBlockType(getDstBlock(c)) == MC || getBlockType(getSrcBlock(c)) == MC )
+            continue;
         int v1 = Vars.time_elastic[getSrcPort(c)];
         int v2 = Vars.time_elastic[getDstPort(c)];
 
@@ -1227,10 +1328,26 @@ bool DFnetlist_Impl::createElasticityConstraints_remaining(Milp_Model &milp, mil
 
 bool DFnetlist_Impl::createThroughputConstraints(Milp_Model& milp, milpVarsEB& Vars, bool first_MG)
 {
+    double frac = 0.5;
     // For every MG, for every channel c
     for (int mg = 0; mg < MG.size(); ++mg) {
         int th_mg = Vars.th_MG[mg]; // Throughput of the marked graph.
         for (channelID c: MG[mg].getChannels()) {
+
+            // Ignore select input channel which is less frequently executed
+            if (getBlockType(getDstBlock(c)) == OPERATOR &&  getOperation(getDstBlock(c)) == "select_op") {
+                if ((getPortType(getDstPort(c)) == TRUE_PORT) && (getTrueFrac(getDstBlock(c)) < frac)){
+                    continue;
+                }
+                if ((getPortType(getDstPort(c)) == FALSE_PORT) && (getTrueFrac(getDstBlock(c)) > frac)){
+                    continue;
+                }
+            }
+
+             // Lana 02.05.20. LSQ serves as FIFO, so we do not need FIFOs on paths to lsq store
+            if (getBlockType(getDstBlock(c)) == OPERATOR &&  getOperation(getDstBlock(c)) == "lsq_store_op") 
+                    continue;
+
             //cout << "  Channel ";
             //if (isBackEdge(c)) cout << "(backedge) ";
             //cout << getChannelName(c) << endl;
@@ -1279,13 +1396,33 @@ bool DFnetlist_Impl::createThroughputConstraints_sc(Milp_Model &milp, milpVarsEB
 
     // if you want to only consider one MG in the throughput, comment the loop and uncomment this line:
     //int sub_mg = components[mg][0];
-
+    double frac = 0.5;
     for (auto sub_mg: components[mg]) {
         int th_mg = Vars.th_MG[sub_mg]; // Throughput of the marked graph.
         for (channelID c: MG[sub_mg].getChannels()) {
+<<<<<<< HEAD
             cout << "  Channel ";
             if (isBackEdge(c)) cout << "(backedge) ";
                 cout << getChannelName(c) << " MG " << sub_mg << endl;
+=======
+
+            // Ignore select input channel which is less frequently executed
+            if (getBlockType(getDstBlock(c)) == OPERATOR &&  getOperation(getDstBlock(c)) == "select_op") {
+                if ((getPortType(getDstPort(c)) == TRUE_PORT) && (getTrueFrac(getDstBlock(c)) < frac)){
+                    continue;
+                }
+                if ((getPortType(getDstPort(c)) == FALSE_PORT) && (getTrueFrac(getDstBlock(c)) > frac)){
+                    continue;
+                }
+            }
+
+             // Lana 02.05.20. LSQ serves as FIFO, so we do not need FIFOs on paths to lsq store
+            if (getBlockType(getDstBlock(c)) == OPERATOR &&  getOperation(getDstBlock(c)) == "lsq_store_op") 
+                    continue;
+    //        cout << "  Channel ";
+    //        if (isBackEdge(c)) cout << "(backedge) ";
+     //           cout << getChannelName(c) << " MG " << sub_mg << endl;
+>>>>>>> b1f302209bb6b2185f0525cc41fb2da1d1773a5b
 
 
             int th_tok = Vars.th_tokens[sub_mg][c];  // throughput of the channel (tokens)
@@ -1423,12 +1560,25 @@ void DFnetlist_Impl::makeNonTransparentBuffers()
 
 void DFnetlist_Impl::instantiateElasticBuffers()
 {
+
     vecChannels ebs;
     ForAllChannels(c) {
+
         if (hasBuffer(c)) ebs.push_back(c);
     }
 
     for (channelID c: ebs) {
+        // Lana 03/05/20 Muxes and merges have internal buffers, instantiate only if size/transparency changed by milp
+        if ((getBlockType(getSrcBlock(c)) == MUX)
+            || (getBlockType(getSrcBlock(c)) == MERGE && getPorts(getSrcBlock(c), INPUT_PORTS).size() > 1)) {
+            if (getChannelBufferSize(c) == 1 & isChannelTransparent(c))
+                continue;
+            if (getChannelBufferSize(c) == 2 ) {
+            	insertBuffer(c, 1, isChannelTransparent(c));
+                continue;
+            }
+        }
+
         insertBuffer(c, getChannelBufferSize(c), isChannelTransparent(c));
     }
 
@@ -1559,7 +1709,7 @@ void DFnetlist_Impl::dumpMilpSolution(const Milp_Model& milp, const milpVarsEB& 
         int th_mg = vars.th_MG[mg];
         if (th_mg == -1) continue;
 
-        cout << "th_mg " << mg << milp[th_mg] << endl;
+        cout << "th_mg " << mg <<": "<< milp[th_mg] << endl;
         for (channelID c: MG[mg].getChannels()) {
             int th_tok = vars.th_tokens[mg][c];
             int Slots = vars.buffer_slots[c];
