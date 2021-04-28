@@ -19,6 +19,9 @@ SET(CMAKE_EXE_LINKER_FLAGS "-static")
 #link_libraries(/lib64/graphviz/libgvplugin_gd.so)
 #link_libraries(/lib64/graphviz/libgvplugin_pango.so)
 
+include_directories(${LLVM_ROOT}/../polly/include)
+include_directories(${LLVM_ROOT}/../polly/lib/External/isl/include)
+include_directories(${LLVM_ROOT}/tools/polly/lib/External/isl/include/)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/include/OptimizeBitwidth)

@@ -32,7 +32,7 @@ build:
 	mkdir -p $(dhls)/elastic-circuits/build
 	(cd $(dhls)/elastic-circuits/build; \
 	 cmake .. \
-	 -DLLVM_ROOT=../../../llvm/build \
+	 -DLLVM_ROOT=../../llvm/build \
 	 -DCMAKE_BUILD_TYPE=DEBUG || exit 1)
 	(cd $(dhls)/elastic-circuits/build; \
 	 make -j4 || exit 1)
