@@ -13,15 +13,16 @@ link_directories(${LLVM_LIBRARY_DIRS})
 
 SET(CMAKE_EXE_LINKER_FLAGS "-static")
 
+include_directories(${LLVM_ROOT}/../polly/include)
+include_directories(${LLVM_ROOT}/../polly/lib/External/isl/include)
+include_directories(${LLVM_ROOT}/tools/polly/lib/External/isl/include/)
+
 #link_libraries(/lib64/graphviz/libgvplugin_core.so)
 #link_libraries(/lib64/graphviz/libgvplugin_dot_layout.so) 
 #link_libraries(/lib64/graphviz/libgvplugin_neato_layout.so)
 #link_libraries(/lib64/graphviz/libgvplugin_gd.so)
 #link_libraries(/lib64/graphviz/libgvplugin_pango.so)
 
-include_directories(${LLVM_ROOT}/../polly/include)
-include_directories(${LLVM_ROOT}/../polly/lib/External/isl/include)
-include_directories(${LLVM_ROOT}/tools/polly/lib/External/isl/include/)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/include/OptimizeBitwidth)
