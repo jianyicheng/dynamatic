@@ -127,7 +127,6 @@ end architecture;
 
 
 
-
 -----------------------------------------------------------------------
 -- logic and, version 0.0
 -----------------------------------------------------------------------
@@ -1051,7 +1050,6 @@ end architecture;
 Library IEEE;
 use IEEE.std_logic_1164.all;
 use ieee.numeric_std.all;
-
 use work.customTypes.all;
 
 entity fcmp_oeq_op is
@@ -2211,7 +2209,6 @@ begin
     dataOutArray(0) <= dataInArray(0) xor msb_mask;
     validArray(0) <= pValidArray(0);
     readyArray(0) <= nReadyArray(0);
-
 
 end architecture;
 ----------------------------------------------------------------------- 

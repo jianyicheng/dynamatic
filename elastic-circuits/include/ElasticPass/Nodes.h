@@ -33,21 +33,27 @@ enum node_type {
     Fork_c    = 16,
     Fifoa_    = 17, // argument buffer
     Fifoi_    = 18, // instruction buffer
-    Sink_   = 19,
-    Source_ = 20,
-    MC_     = 21, 
-    dummy_ =22
+    Sink_     = 19,
+    Source_   = 20,
+    MC_       = 21,
+    dummy_    = 22,
+    // additional components added by DASSComp_
+    DASSComp_        = 23,
+    DASSMutiUseTail_ = 25
 };
 
-class BBNode; 
+class BBNode;
 
 class ENode {
 
 public:
     int capacity;
     char* compType               = nullptr;
+    ENode* condition             = nullptr;
     ENode* branchFalseOutputSucc = nullptr;
     ENode* branchTrueOutputSucc  = nullptr;
+    ENode* muxFalseInputPred     = nullptr;
+    ENode* muxTrueInputPred      = nullptr;
     std::vector<ENode*>* parameterNodesReferences[3];
     int cstValue   = 0;       // Leonardo, inserted line, used only with Cst_ type of nodes
     BBNode* bbNode = nullptr; // Leonardo, inserted line
@@ -59,23 +65,26 @@ public:
     Argument* A        = nullptr;
     ConstantInt* CI    = nullptr;
     ConstantFP* CF     = nullptr;
+    bool isShortPath   = false;
     std::vector<ENode*>* CntrlPreds;     // naming isnt very good, this is a normal predecessor that
                                          // carries both data and control signals
     std::vector<ENode*>* CntrlSuccs;     // naming isnt very good, this is a normal successor that
                                          // carries both data and control signals
     std::vector<ENode*>* JustCntrlPreds; // predecessors that only carry control signals
     std::vector<ENode*>* JustCntrlSuccs; // successors that only carry control signals
-    
-    std::vector<unsigned> sizes_preds; // sizes of the signals to predecessors
-    std::vector<unsigned> sizes_succs; // sizes of the signals to successors
-
+    std::vector<unsigned>* sizes;
     bool is_live_in  = false;
     bool is_live_out = false;
     bool visited     = false;
     bool inthelist   = false;
     int id           = -1;
     int counter      = 0;
+    int latency      = -1;
+    int ii           = 1;
+    int depth        = -1;
     bool controlNode; // true if this ENode is in the Cntrl_nodes list of a BBNode
+    BasicBlock* trueBB;
+    BasicBlock* falseBB;
 
     ENode(node_type nd, const char* name, Instruction* inst, BasicBlock* bb);
     ENode(node_type nd, BasicBlock* bb);
@@ -94,8 +103,8 @@ public:
     bool isMux;
     bool isCntrlMg;
     std::string argName;
-    int lsqMCLoadId = 0; 
-    int lsqMCStoreId = 0; 
+    int lsqMCLoadId  = 0;
+    int lsqMCStoreId = 0;
 
 private:
     void commonInit(const node_type nd, const char* name, Instruction* inst, Argument* a,
@@ -105,7 +114,7 @@ private:
 class BBNode {
 
 public:
-    const char* name; 
+    const char* name;
     BasicBlock* BB;
     int Idx;
     std::vector<BBNode*>* CntrlPreds;
@@ -117,8 +126,7 @@ public:
     std::map<std::string, double> succ_freqs;
     int counter;
 
-    BBNode(BasicBlock* bb, int idx,
-           const char* name = NULL); 
+    BBNode(BasicBlock* bb, int idx, const char* name = NULL);
 
     bool isImportedFromDotFile();
     void set_succ_freq(std::string succ_name, double freq);

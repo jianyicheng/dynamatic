@@ -7,6 +7,8 @@
 #include "MemElemInfo/MemUtils.h"
 #include "llvm/Support/Debug.h"
 
+#include "DASS/DASSUtils.h"
+
 #define DEBUG_TYPE "MEI"
 
 void MemElemInfo::finalize() {
@@ -28,6 +30,11 @@ void MemElemInfo::finalize() {
 }
 
 bool MemElemInfoPass::runOnFunction(Function& F) {
+    // Skip the test bench
+    auto fname = demangleFuncName(F.getName().str().c_str());
+    if (fname == "main")
+        return false;
+
     IA       = &getAnalysis<IndexAnalysisPass>().getInfo();
     AA       = &getAnalysis<AAResultsWrapperPass>().getAAResults();
     auto& LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
@@ -42,7 +49,7 @@ bool MemElemInfoPass::runOnFunction(Function& F) {
         processLoop(L);
     }
     for (auto& LM : loopMeta)
-        createSets(LM);
+        createSets(LM, LI);
 
     /// Determine whether memory accessing instructions outside any loop must be
     /// connected to an LSQ.
@@ -101,7 +108,7 @@ bool MemElemInfoPass::runOnFunction(Function& F) {
 }
 
 void MemElemInfoPass::print(llvm::raw_ostream& OS, const Module* M) const {
-    DEBUG(dbgs() << __func__ << " BEGIN\n");
+    LLVM_DEBUG(dbgs() << __func__ << " BEGIN\n");
     OS << "Instructions in some loop: \n";
     for (auto inst : MEI.loopInstrSet)
         OS << *inst << "\n";
@@ -126,11 +133,11 @@ void MemElemInfoPass::print(llvm::raw_ostream& OS, const Module* M) const {
     OS << "Other instructions: \n";
     for (auto Inst : MEI.otherInsts)
         OS << *Inst << "\n";
-    DEBUG(dbgs() << __func__ << " END\n");
+    LLVM_DEBUG(dbgs() << __func__ << " END\n");
 }
 
 void MemElemInfoPass::releaseMemory() {
-    DEBUG(dbgs() << __func__ << " BEGIN\n");
+    LLVM_DEBUG(dbgs() << __func__ << " BEGIN\n");
     loopMeta.clear();
 
     /***** Clear structures in MEI *********/
@@ -143,7 +150,7 @@ void MemElemInfoPass::releaseMemory() {
     MEI.loopInstrSet.clear();
     /***************************************/
 
-    DEBUG(dbgs() << __func__ << " END\n");
+    LLVM_DEBUG(dbgs() << __func__ << " END\n");
 }
 
 void MemElemInfoPass::getAnalysisUsage(AnalysisUsage& AU) const {
@@ -155,6 +162,17 @@ void MemElemInfoPass::getAnalysisUsage(AnalysisUsage& AU) const {
 
 MemElemInfo& MemElemInfoPass::getInfo() { return MEI; }
 
+static bool isScalarPointer(Instruction* instr) {
+    if (auto loadInst = dyn_cast<LoadInst>(instr))
+        return (isa<AllocaInst>(loadInst->getPointerOperand()) ||
+                isa<Argument>(loadInst->getPointerOperand()));
+    else if (auto storeInst = dyn_cast<StoreInst>(instr))
+        return (isa<AllocaInst>(storeInst->getPointerOperand()) ||
+                isa<Argument>(storeInst->getPointerOperand()));
+    else
+        return false;
+}
+
 void MemElemInfoPass::processLoop(Loop* L) {
     loopMeta.emplace_back();
     auto& LM = loopMeta.back();
@@ -163,10 +181,21 @@ void MemElemInfoPass::processLoop(Loop* L) {
         int scopId    = IA->getScopID(BB);
         bool isInScop = IA->isInScop(BB);
 
+        // JC 26062021: Call inst will interfere the scop analysis - hack
+        bool hasCall = false;
+        for (auto& I : *BB)
+            if (isa<CallInst>(&I)) {
+                hasCall = true;
+                break;
+            }
+
         for (auto& I : *BB) {
             if (!I.mayReadOrWriteMemory())
                 continue;
             if (isa<CallInst>(&I))
+                continue;
+            // JC 26062021: Ignore simple pointer value
+            if (isScalarPointer(&I))
                 continue;
 
             MEI.loopInstrSet.push_back(&I);
@@ -176,13 +205,24 @@ void MemElemInfoPass::processLoop(Loop* L) {
             if (I.mayWriteToMemory())
                 LM.wrInsts.insert(&I);
 
-            if (isInScop)
+            if (isInScop || hasCall)
                 LM.instToScop[&I] = scopId;
         }
     }
 }
 
-void MemElemInfoPass::createSets(struct TLLMeta& LM) {
+static bool callHack(const Instruction* inst0, const Instruction* inst1, LoopInfo& LI) {
+    auto loop0 = LI.getLoopFor(inst0->getParent());
+    auto loop1 = LI.getLoopFor(inst1->getParent());
+    if (loop0 == loop1)
+        for (auto BB : loop0->getBlocks())
+            for (auto& I : *BB)
+                if (isa<CallInst>(&I))
+                    return true;
+    return false;
+}
+
+void MemElemInfoPass::createSets(struct TLLMeta& LM, LoopInfo& LInfo) {
     std::list<instPairT> intersectList;
     auto rdInstrSet = LM.rdInsts;
     auto wrInstrSet = LM.wrInsts;
@@ -204,6 +244,8 @@ void MemElemInfoPass::createSets(struct TLLMeta& LM) {
             if (rdIt != LM.instToScop.end() && wrIt != LM.instToScop.end() &&
                 rdIt->second == wrIt->second) {
                 if (IA->getRAWlist().find(pair) != IA->getRAWlist().end())
+                    intersectList.push_back(pair);
+                else if (callHack(rdInst, wrInst, LInfo))
                     intersectList.push_back(pair);
                 continue;
             }
@@ -264,7 +306,7 @@ void MemElemInfoPass::createSets(struct TLLMeta& LM) {
     for (auto instPair : intersectList) {
         auto lInst = instPair.first;
         auto rInst = instPair.second;
-        DEBUG(dbgs() << __func__ << " Intersecting : " << *lInst << "," << *rInst << " \n");
+        LLVM_DEBUG(dbgs() << __func__ << " Intersecting : " << *lInst << "," << *rInst << " \n");
 
         /* Find base array */
         const Value* base = findBase(lInst);

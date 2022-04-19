@@ -1,0 +1,8 @@
+hls_verifier/HlsVerifier/*.o
+examples/*/hdl
+examples/*/reports
+examples/*/sim
+examples/*/*.log
+examples/*/*.s
+filelist.lst
+*.rpt

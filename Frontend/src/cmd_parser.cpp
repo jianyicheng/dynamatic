@@ -58,11 +58,6 @@ enum
 
 bool set_filename = FALSE;
 
-bool is_target_set = FALSE;
-string target;
-
-string vendor = "xilinx";
-
 void string_split(const string& s, char c, vector<string>& v)
 {
    string::size_type i = 0;
@@ -187,7 +182,6 @@ int synth ( string input_cmp )
         cout << "Available options are: " << endl;
         cout << "-use-lsq={true|false} : enable/disable LSQ insertion in the design. Default value = true." << endl;
         cout << "-simple-buffers={true|false} : enable/dispable placement of naive buffers. Default value = false." << endl;
-        cout << "-target={part-number} : part number of the targeted FPGA. Default value = 7k160tfbg484" << endl;
         return OK;
     }
 
@@ -206,12 +200,6 @@ int synth ( string input_cmp )
 
         command += " ";
         command += input_cmp;
-
-        if (is_target_set) {
-            command += " ";
-            command += "-target=";
-            command += target;
-        }
         
         cout << command;
         //current_file = current_file;
@@ -622,8 +610,8 @@ int optimize ( string input_cmp )
         
         if ( use_default_period == 0 )
         {
-        command += " -period=";
-        command += to_string ( period );
+            command += " -period=";
+            command += to_string ( period );
         }
         command += " ";
         command += input_cmp;
@@ -644,13 +632,13 @@ int optimize ( string input_cmp )
             
             //cp $1_graph.dot _input
             command = "cp ";
-        command += project_dir;
-        command += OUTPUT_DIR;
-        command += current_file;
+            command += project_dir;
+            command += OUTPUT_DIR;
+            command += current_file;
             //command += "_optimized.dot ";
-        command += "_graph_buf.dot ";
-        
-        command += project_dir;
+            command += "_graph_buf.dot ";
+            
+            command += project_dir;
             //command += OUTPUT_DIR;
             command += "/_input/";
             command += current_file;
@@ -717,10 +705,10 @@ int optimize ( string input_cmp )
             current_file += "_area";
 
             command += project_dir;
-        command += OUTPUT_DIR;
-        command += current_file;
-        command += "_optimized.dot";
-        
+            command += OUTPUT_DIR;
+            command += current_file;
+            command += "_optimized.dot";
+            
             system (command.c_str());
             cout << command << endl;
 
@@ -743,9 +731,9 @@ int optimize ( string input_cmp )
             command += OUTPUT_DIR;
             command += current_file;
             command += "_optimized.dot";
-        
-        system (command.c_str());
-        
+            
+            system (command.c_str());
+            
         }
         
         //dot -Tpng reports/histogram_elaborated_optimized.dot > file.png
@@ -767,7 +755,7 @@ int optimize ( string input_cmp )
         output_file += OUTPUT_DIR;
         output_file += current_file;
         output_file += "_optimized.dot";
-        
+
         current_file = output_file;
 
     }
@@ -907,9 +895,6 @@ int history ( string input_cmp )
 
 int set_target ( string input_cmp )
 {
-    is_target_set = TRUE;
-    target = input_cmp;
-
     return OK;
 }
 

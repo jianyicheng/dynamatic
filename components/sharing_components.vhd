@@ -92,7 +92,7 @@ begin
 
     end process;
 
-    process(tehb_ready, pValidArray)
+    process(tehb_ready)
         variable some_input_valid : std_logic;
     begin
         some_input_valid := '0';

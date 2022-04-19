@@ -78,14 +78,14 @@ public:
 
     // Implementation in `AddPhi.cpp`
     void addPhi();
-    //void makePhiDag(std::vector<BBNode*>* path, ENode* li);
-    //ENode* find_phi(BBNode* bbnode, ENode* li);
-    //void addPhiLoops(std::vector<BBNode*>* path, ENode* li);
-    //void findAllPaths(BBNode* to, BBNode* from, std::vector<BBNode*>* visited,
-     //                 std::vector<std::vector<BBNode*>*>* paths, BBNode* currNode);
-    //void printPath(std::vector<BBNode*>* path, FILE* f);
-    //void printPaths(std::vector<std::vector<BBNode*>*>* paths, FILE* f);
-   // void fixLLVMPhiLiveOuts();
+    // void makePhiDag(std::vector<BBNode*>* path, ENode* li);
+    // ENode* find_phi(BBNode* bbnode, ENode* li);
+    // void addPhiLoops(std::vector<BBNode*>* path, ENode* li);
+    // void findAllPaths(BBNode* to, BBNode* from, std::vector<BBNode*>* visited,
+    //                 std::vector<std::vector<BBNode*>*>* paths, BBNode* currNode);
+    // void printPath(std::vector<BBNode*>* path, FILE* f);
+    // void printPaths(std::vector<std::vector<BBNode*>*>* paths, FILE* f);
+    // void fixLLVMPhiLiveOuts();
     void setPhiLiveOuts();
 
     // Implementation in `Bitwidth.cpp`
@@ -107,6 +107,23 @@ public:
     void updateMCConstant(ENode* enode, ENode* mcEnode);
 
     void setGetelementPtrConsts(std::vector<ENode*>* enode_dag);
+
+    //--------------------------------------------------------//
+    // Added for DASS compiler, by Jianyi
+
+    // Implementation in OptimizePointersForIO.cpp
+    void replacePointersWithRegisters(Function&, std::vector<const Value*>*);
+    void mergeCallTail(std::vector<const Value*>*);
+    // Implementation in AddControlForCall.cpp
+    void addControlForCall();
+    // Implementation in ShiftBlockID.cpp
+    void shiftBlockID();
+    // Implementation in OptimizeCF.cpp
+    void optimizeIfStmt(Function*);
+    void optimizeLoops(Function*);
+    void insertLoopInterchangers(Function*);
+    void paralleliseLoops(Function*);
+    void addBranchConstraints(Function*);
 
     //--------------------------------------------------------//
 

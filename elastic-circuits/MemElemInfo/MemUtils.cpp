@@ -28,6 +28,7 @@ const Value* findBaseInternal(const Value* addr) {
 
     /* We try to find a few known cases of pointer expression. For others,
      * implement when you come across them */
+    llvm::errs() << *addr << "\n";
     llvm_unreachable("Cannot  determine base array, aborting...");
 }
 

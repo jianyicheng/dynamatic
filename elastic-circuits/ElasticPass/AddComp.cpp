@@ -190,7 +190,14 @@ void CircuitGenerator::buildDagEnodes(Function& F) {
                         }
                     } else if (nd2->type == Argument_) {
                         if (nd2->A == Inst.getOperand(i)) {
-                            if (enode->Instr->getOpcode() != Instruction::PHI) {
+                            // Jianyi 15.06.2021: Ignore array arguments for call instructions
+                            if ((Inst.getOperand(i)->getType()->isArrayTy() ||
+                                 Inst.getOperand(i)->getType()->isPointerTy()) &&
+                                enode->Instr->getOpcode() == Instruction::Call)
+                                llvm::errs()
+                                    << "Ignored array argument at " << i << "\n"
+                                    << *(nd2->A) << "\nfor call: " << *(enode->Instr) << "\n";
+                            else if (enode->Instr->getOpcode() != Instruction::PHI) {
                                 enode->CntrlPreds->push_back(nd2);
                                 nd2->CntrlSuccs->push_back(enode);
                             }
@@ -287,10 +294,10 @@ void CircuitGenerator::fixBuildDagEnodes() {
                         if (enode_0->Instr->getOperand(i) ==
                             enode_1->Instr) { // if the phi is connected to that enode
                             // Lana 18.10.2018. Make sure there are no double edges between phis
-                            //if (!contains(enode_0->CntrlPreds, enode_1))
-                                enode_0->CntrlPreds->push_back(enode_1); // add connection
-                            //if (!contains(enode_1->CntrlSuccs, enode_0))
-                                enode_1->CntrlSuccs->push_back(enode_0); // add connection
+                            // if (!contains(enode_0->CntrlPreds, enode_1))
+                            enode_0->CntrlPreds->push_back(enode_1); // add connection
+                            // if (!contains(enode_1->CntrlSuccs, enode_0))
+                            enode_1->CntrlSuccs->push_back(enode_0); // add connection
                         }
                     }
                     if (enode_1->type == Inst_ || enode_1->type == Branch_) {
@@ -483,7 +490,6 @@ void CircuitGenerator::addBranch() {
                 // update live-outs
                 it              = removeNode(bbnode->Live_out, lo);
                 lo->is_live_out = false;
-
             } else {
                 if (lo->type == Branch_) { // find branch condition
                     Br = lo;
@@ -709,20 +715,20 @@ void CircuitGenerator::removeRedundantBeforeElastic(std::vector<BBNode*>* bbnode
             std::vector<ENode*> nodeList;
             for (auto& succ : *enode->CntrlSuccs) {
                 if (succ->type == Inst_) {
-                	bool add_const = false;
+                    bool add_const = false;
                     if (succ->Instr->getOpcode() == Instruction::Store) {
-                        if (succ->Instr->getOperand(1) == dyn_cast<Value>(enode->A)) 
-                        	add_const = true;                    
+                        if (succ->Instr->getOperand(1) == dyn_cast<Value>(enode->A))
+                            add_const = true;
                     }
                     if (succ->Instr->getOpcode() == Instruction::Load) {
-                        if (succ->Instr->getOperand(0) == dyn_cast<Value>(enode->A)) 
-                        	add_const = true;
+                        if (succ->Instr->getOperand(0) == dyn_cast<Value>(enode->A))
+                            add_const = true;
                     }
 
                     if (add_const) {
-                    	succ->CntrlPreds->erase(std::remove(succ->CntrlPreds->begin(),
-                                                                succ->CntrlPreds->end(), enode),
-                                                    succ->CntrlPreds->end());
+                        succ->CntrlPreds->erase(
+                            std::remove(succ->CntrlPreds->begin(), succ->CntrlPreds->end(), enode),
+                            succ->CntrlPreds->end());
 
                         ENode* cstNode = new ENode(Cst_, std::to_string(0).c_str(), succ->BB);
 
@@ -805,88 +811,128 @@ void CircuitGenerator::removeRedundantAfterElastic(std::vector<ENode*>* enode_da
         }
     }
     for (auto enode : tmpNodes) {
-
-        if (enode->type == Fork_) {
-            ENode* pred = enode->CntrlPreds->front();
-            ENode* succ = enode->CntrlSuccs->front();
-
-            pred->CntrlSuccs->erase(
-                std::remove(pred->CntrlSuccs->begin(), pred->CntrlSuccs->end(), enode),
-                pred->CntrlSuccs->end());
-            succ->CntrlPreds->erase(
-                std::remove(succ->CntrlPreds->begin(), succ->CntrlPreds->end(), enode),
-                succ->CntrlPreds->end());
-
-            pred->CntrlSuccs->push_back(succ);
-            succ->CntrlPreds->push_back(pred);
-        } else if (enode->type == Fork_c) {
-            ENode* pred = enode->JustCntrlPreds->front();
-            ENode* succ = enode->JustCntrlSuccs->front();
-
-            pred->JustCntrlSuccs->erase(
-                std::remove(pred->JustCntrlSuccs->begin(), pred->JustCntrlSuccs->end(), enode),
-                pred->JustCntrlSuccs->end());
-            succ->JustCntrlPreds->erase(
-                std::remove(succ->JustCntrlPreds->begin(), succ->JustCntrlPreds->end(), enode),
-                succ->JustCntrlPreds->end());
-
-            pred->JustCntrlSuccs->push_back(succ);
-            succ->JustCntrlPreds->push_back(pred);
+        if (enode->type == Fork_ || enode->type == Fork_c) {
+            ENode* pred = enode->CntrlPreds->size() ? enode->CntrlPreds->front()
+                                                    : enode->JustCntrlPreds->front();
+            ENode* succ = enode->CntrlSuccs->size() ? enode->CntrlSuccs->front()
+                                                    : enode->JustCntrlSuccs->front();
+            if (std::find(pred->CntrlSuccs->begin(), pred->CntrlSuccs->end(), enode) !=
+                pred->CntrlSuccs->end()) {
+                pred->CntrlSuccs->erase(
+                    std::remove(pred->CntrlSuccs->begin(), pred->CntrlSuccs->end(), enode),
+                    pred->CntrlSuccs->end());
+                pred->CntrlSuccs->push_back(succ);
+            }
+            if (std::find(pred->JustCntrlSuccs->begin(), pred->JustCntrlSuccs->end(), enode) !=
+                pred->JustCntrlSuccs->end()) {
+                pred->JustCntrlSuccs->erase(
+                    std::remove(pred->JustCntrlSuccs->begin(), pred->JustCntrlSuccs->end(), enode),
+                    pred->JustCntrlSuccs->end());
+                pred->JustCntrlSuccs->push_back(succ);
+            }
+            if (std::find(succ->CntrlPreds->begin(), succ->CntrlPreds->end(), enode) !=
+                succ->CntrlPreds->end()) {
+                succ->CntrlPreds->erase(
+                    std::remove(succ->CntrlPreds->begin(), succ->CntrlPreds->end(), enode),
+                    succ->CntrlPreds->end());
+                succ->CntrlPreds->push_back(pred);
+            }
+            if (std::find(succ->JustCntrlPreds->begin(), succ->JustCntrlPreds->end(), enode) !=
+                succ->JustCntrlPreds->end()) {
+                succ->JustCntrlPreds->erase(
+                    std::remove(succ->JustCntrlPreds->begin(), succ->JustCntrlPreds->end(), enode),
+                    succ->JustCntrlPreds->end());
+                succ->JustCntrlPreds->push_back(pred);
+            }
         }
-
         delete enode;
         enode_dag->erase(std::remove(enode_dag->begin(), enode_dag->end(), enode),
                          enode_dag->end());
     }
 }
 
+static int getMaxID(std::vector<ENode*>* enode_dag) {
+    auto id = 0;
+    for (auto enode : *enode_dag)
+        id = (id < enode->id) ? enode->id : id;
+    return id + 1;
+}
+
 void CircuitGenerator::addBuffersSimple() {
     std::vector<ENode*> nodeList;
+    auto id = getMaxID(enode_dag);
 
     for (auto& enode : *enode_dag) {
         if (enode->type == Phi_ || enode->type == Phi_n || enode->type == Phi_c) {
             if (enode->CntrlPreds->size() > 1 || enode->JustCntrlPreds->size() > 1) {
 
-                ENode* new_node = NULL;
+                // ENode* new_node = NULL;
 
-                if (enode->Instr != NULL) {
-                    new_node = new ENode(Bufferi_, "buffI", enode->Instr, NULL);
-                } else if (enode->A != NULL) {
-                    new_node = new ENode(Buffera_, "buffA", enode->A, NULL);
-                } else
-                    new_node = new ENode(Buffera_, "buffA");
+                // if (enode->Instr != NULL) {
+                //     new_node = new ENode(Bufferi_, "buffI", enode->Instr, NULL);
+                // } else if (enode->A != NULL) {
+                //     new_node = new ENode(Buffera_, "buffA", enode->A, NULL);
+                // } else
+                //     new_node = new ENode(Buffera_, "buffA");
 
-                new_node->id = CircuitGenerator::buff_id++;
+                // new_node->id = CircuitGenerator::buff_id++;
 
-                if (!enode->is_live_out) {
-                    new_node->BB = enode->BB;
-                }
+                // if (!enode->is_live_out) {
+                //     new_node->BB = enode->BB;
+                // }
+
+                // Jianyi 031722: Use DASS FIFOs they are compatible for the buffering tool
+                auto new_node       = new ENode(Inst_, enode->BB);
+                new_node->Name      = "DASSFIFO_B" + std::to_string(1);
+                new_node->Instr     = enode->Instr;
+                new_node->isMux     = false;
+                new_node->isCntrlMg = false;
+                new_node->depth     = 1;
+                new_node->id        = id;
+                id++;
+                new_node->bbNode = enode->bbNode;
+                new_node->bbId   = enode->bbId;
 
                 if (enode->type == Phi_c) {
 
                     ENode* e_succ = enode->JustCntrlSuccs->front();
-
-                    new_node->JustCntrlPreds->push_back(enode);
                     new_node->JustCntrlSuccs->push_back(e_succ);
-
-                    removeNode(e_succ->JustCntrlPreds, enode);
-                    removeNode(enode->JustCntrlSuccs, e_succ);
-
-                    enode->JustCntrlSuccs->push_back(new_node);
+                    new_node->JustCntrlPreds->push_back(enode);
+                    e_succ->JustCntrlPreds->erase(std::find(e_succ->JustCntrlPreds->begin(),
+                                                            e_succ->JustCntrlPreds->end(), enode));
                     e_succ->JustCntrlPreds->push_back(new_node);
+                    enode->JustCntrlSuccs->clear();
+                    enode->JustCntrlSuccs->push_back(new_node);
+
+                    //                    new_node->JustCntrlPreds->push_back(enode);
+                    //                    new_node->JustCntrlSuccs->push_back(e_succ);
+                    //
+                    //                    removeNode(e_succ->JustCntrlPreds, enode);
+                    //                    removeNode(enode->JustCntrlSuccs, e_succ);
+                    //
+                    //                    enode->JustCntrlSuccs->push_back(new_node);
+                    //                    e_succ->JustCntrlPreds->push_back(new_node);
 
                 } else {
 
                     ENode* e_succ = enode->CntrlSuccs->front();
 
-                    new_node->CntrlPreds->push_back(enode);
                     new_node->CntrlSuccs->push_back(e_succ);
-
-                    removeNode(e_succ->CntrlPreds, enode);
-                    removeNode(enode->CntrlSuccs, e_succ);
-
-                    enode->CntrlSuccs->push_back(new_node);
+                    new_node->CntrlPreds->push_back(enode);
+                    e_succ->CntrlPreds->erase(
+                        std::find(e_succ->CntrlPreds->begin(), e_succ->CntrlPreds->end(), enode));
                     e_succ->CntrlPreds->push_back(new_node);
+                    enode->CntrlSuccs->clear();
+                    enode->CntrlSuccs->push_back(new_node);
+
+                    //       new_node->CntrlPreds->push_back(enode);
+                    //       new_node->CntrlSuccs->push_back(e_succ);
+
+                    //       removeNode(e_succ->CntrlPreds, enode);
+                    //       removeNode(enode->CntrlSuccs, e_succ);
+
+                    //       enode->CntrlSuccs->push_back(new_node);
+                    //       e_succ->CntrlPreds->push_back(new_node);
                 }
 
                 nodeList.push_back(new_node);
@@ -952,7 +998,47 @@ void CircuitGenerator::setBBIds() {
         if (!found)
             enode->bbId = 0;
     }
+}
 
+// JC: Here added detecting a small offset shift in block IDs when there are function calls
+static int getOffset(std::ifstream& file) {
+    int offset = 1000;
+    std::string line;
+    while (getline(file, line)) {
+        std::stringstream iss(line);
+        std::string src, dst;
+        int freq;
+        iss >> src >> dst >> freq;
+
+        auto srcBB = std::stoi(src.substr(src.find("block") + 5));
+        auto dstBB = std::stoi(dst.substr(dst.find("block") + 5));
+        offset     = std::min(offset, srcBB);
+        offset     = std::min(offset, dstBB);
+    }
+
+    return offset - 1;
+}
+
+static int getOffsetNode(BBNode_vec* bbnode_dag) {
+    int offset = 1000;
+    for (auto& bnd : *bbnode_dag) {
+        std::string src = bnd->BB->getName();
+        for (auto& bnd_succ : *(bnd->CntrlSuccs)) {
+            std::string dst = bnd_succ->BB->getName();
+
+            auto srcBB = std::stoi(src.substr(src.find("block") + 5));
+            auto dstBB = std::stoi(dst.substr(dst.find("block") + 5));
+            offset     = std::min(offset, srcBB);
+            offset     = std::min(offset, dstBB);
+            offset     = std::min(offset, srcBB);
+            offset     = std::min(offset, dstBB);
+        }
+    }
+    return offset - 1;
+}
+
+static std::string shiftedBlock(std::string block, int offset) {
+    return "block" + std::to_string(std::stoi(block.substr(block.find("block") + 5)) - offset);
 }
 
 void CircuitGenerator::setFreqs(const std::string& function_name) {
@@ -964,8 +1050,14 @@ void CircuitGenerator::setFreqs(const std::string& function_name) {
         return;
     }
 
+    // JC 25062021: Reading the offset from the file
+    auto offset = getOffset(file);
+    assert(offset >= 0);
+
     // Reading the frequencies from the file
     std::string line;
+    file.clear();
+    file.seekg(0);
     std::map<std::pair<std::string, std::string>, int> frequencies;
     while (getline(file, line)) {
         std::stringstream iss(line);
@@ -973,11 +1065,16 @@ void CircuitGenerator::setFreqs(const std::string& function_name) {
         int freq;
         iss >> src_bb >> dst_bb >> freq;
 
+        src_bb = shiftedBlock(src_bb, offset);
+        dst_bb = shiftedBlock(dst_bb, offset);
         assert(frequencies.find({src_bb, dst_bb}) == frequencies.end());
         assert(freq >= 0);
 
         frequencies[{src_bb, dst_bb}] = freq;
     }
+
+    // get offset in the nodes
+    auto offset_2 = getOffsetNode(bbnode_dag);
 
     // setting the frequencies in the BBNodes
     for (auto& bnd : *bbnode_dag) {
@@ -985,9 +1082,14 @@ void CircuitGenerator::setFreqs(const std::string& function_name) {
         for (auto& bnd_succ : *(bnd->CntrlSuccs)) {
             std::string dst_bb = bnd_succ->BB->getName();
 
-            assert(frequencies.find({src_bb, dst_bb}) != frequencies.end());
+            auto src_bb_shift = shiftedBlock(src_bb, offset_2);
+            auto dst_bb_shift = shiftedBlock(dst_bb, offset_2);
+            if (frequencies.find({src_bb_shift, dst_bb_shift}) == frequencies.end())
+                llvm::errs() << "Cannot find edge: " << src_bb_shift << " -> " << dst_bb_shift
+                             << ", offset = " << offset << "\n";
+            assert(frequencies.find({src_bb_shift, dst_bb_shift}) != frequencies.end());
 
-            bnd->set_succ_freq(dst_bb, frequencies[{src_bb, dst_bb}]);
+            bnd->set_succ_freq(dst_bb, frequencies[{src_bb_shift, dst_bb_shift}]);
         }
     }
 }
@@ -1048,11 +1150,9 @@ void CircuitGenerator::addControl() {
 
                     if (enode->CntrlSuccs->front()->type == Inst_) {
                         if (enode->CntrlSuccs->front()->Instr->getOpcode() ==
-                            Instruction::GetElementPtr ||
-                            enode->CntrlSuccs->front()->Instr->getOpcode() ==
-                            Instruction::Load ||
-                            enode->CntrlSuccs->front()->Instr->getOpcode() ==
-                            Instruction::Store ) {
+                                Instruction::GetElementPtr ||
+                            enode->CntrlSuccs->front()->Instr->getOpcode() == Instruction::Load ||
+                            enode->CntrlSuccs->front()->Instr->getOpcode() == Instruction::Store) {
                             forkC_node->JustCntrlSuccs->push_back(enode);
                             enode->JustCntrlPreds->push_back(forkC_node);
                         }

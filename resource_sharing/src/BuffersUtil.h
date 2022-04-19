@@ -10,9 +10,7 @@
 
 #include <map>
 
-#include "DFnetlist/Dataflow.h"
-//#include "Dataflow.h"
-
+#include "Dataflow.h"
 
 using namespace std;
 using namespace Dataflow;

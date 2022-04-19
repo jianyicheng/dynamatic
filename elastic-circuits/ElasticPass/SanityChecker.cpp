@@ -20,7 +20,8 @@ void CircuitGenerator::phiSanityCheck(std::vector<ENode*>* enode_dag) {
             BBNode* phiBB = findBB(enode);
             // phi needs to have as many inputs as there are predecessor BBs
 
-            assert(enode->CntrlPreds->size() == phiBB->CntrlPreds->size());
+            // Jianyi 03.01.2021 : remove it to enable multi-threading
+            // assert(enode->CntrlPreds->size() == phiBB->CntrlPreds->size());
 
             // each pred bb has to contain a predecessor of phi
             for (auto& predBB : *phiBB->CntrlPreds) {
@@ -116,10 +117,19 @@ void CircuitGenerator::branchSanityCheck(std::vector<ENode*>* enode_dag) {
         if (enode->type == Fork_) {
             // assert (enode->CntrlSuccs->size() > 1);
             BBNode* forkBB = findBB(enode);
-            // successors need to be in same BB or in its direct successors (before we insert
-            // branches)
-            for (auto& succNode : *enode->CntrlSuccs)
+            for (auto& succNode : *enode->CntrlSuccs) {
+                if (findBB(succNode) != forkBB) {
+                    if (enode->Instr)
+                        llvm::errs() << *(enode->Instr);
+                    llvm::errs() << " -> fork to -> ";
+                    if (succNode->Instr)
+                        llvm::errs() << *(succNode->Instr);
+                    llvm::errs() << "\n";
+                    llvm::errs() << getNodeDotNameNew(enode) << " -> "
+                                 << getNodeDotNameNew(succNode) << "\n";
+                }
                 assert(findBB(succNode) == forkBB);
+            }
         }
 
         // at this point, phi should have a single successor in same bb
@@ -143,6 +153,10 @@ void CircuitGenerator::instructionSanityCheck(std::vector<ENode*>* enode_dag) {
     for (auto& enode : *enode_dag) {
         if (enode->type == Inst_) {
             // std::cout << enode->Name << enode->id<<"\n";
+            // Jianyi 170322: Skip checking dass components
+            if (!enode->Instr && enode->Name.find("DASS") != std::string::npos)
+                continue;
+
             if (enode->Instr->getOpcode() == Instruction::Load) {
                 assert(enode->CntrlPreds->size() == 1);
                 // assert(enode->CntrlSuccs->size() == 1);
@@ -173,6 +187,12 @@ void CircuitGenerator::instructionSanityCheck(std::vector<ENode*>* enode_dag) {
                        enode->Instr->getOpcode() == Instruction::FCmp ||
                        enode->Instr->getOpcode() ==
                            Instruction::Store) { // output to sink or to control
+                if (enode->CntrlPreds->size() != 2) {
+                    llvm::errs() << *(enode->Instr) << " : has " << enode->CntrlPreds->size()
+                                 << " inputs!\n";
+                    for (auto n : *enode->CntrlPreds)
+                        llvm::errs() << getNodeDotNameNew(n) << "\n";
+                }
                 assert(enode->CntrlPreds->size() == 2);
                 // assert(enode->CntrlSuccs->size() == 1);
             } else if (enode->Instr->getOpcode() == Instruction::Select) {
@@ -307,9 +327,16 @@ void CircuitGenerator::sanityCheckVanilla(std::vector<ENode*>* enode_dag) {
             for (auto& mergePred : *(mergeEnode->CntrlPreds)) {
                 // predecessors come from different basic blocks,
                 // hence are elastic Branch nodes, or are constant values
+                if (mergePred->type == Branch_n || mergePred->type == Cst_ ||
+                    mergePred->type == Bufferi_ || mergePred->type == Buffera_ ||
+                    mergePred->type == Fork_ || mergePred->type == Phi_c)
+                    ;
+                else
+                    llvm::errs() << mergePred->Name << " in  " << mergeEnode->Name << "\n";
                 assert(mergePred->type == Branch_n || mergePred->type == Cst_ ||
                        mergePred->type == Bufferi_ || mergePred->type == Buffera_ ||
-                       mergePred->type == Fork_ || mergePred->type == Phi_c);
+                       mergePred->type == Fork_ || mergePred->type == Phi_c ||
+                       mergePred->type == DASSMutiUseTail_);
             }
         } else if (enode->type == Phi_c) {
             ENode* mergeCEnode = enode;
@@ -335,18 +362,29 @@ void CircuitGenerator::sanityCheckVanilla(std::vector<ENode*>* enode_dag) {
             assert(forkEnode->CntrlPreds->size() == 1);
             ENode* forkPred = forkEnode->CntrlPreds->front();
 
+            if (!(forkPred->type == Buffera_ || forkPred->type == Bufferi_ ||
+                  forkPred->type == Inst_ || forkPred->type == Branch_ ||
+                  forkPred->type == Argument_ || forkPred->type == Phi_ ||
+                  forkPred->type == Phi_n || forkPred->type == Phi_c || forkPred->type == Cst_))
+                llvm::errs() << getNodeDotNameNew(forkPred) << "\n";
             assert(forkPred->type == Buffera_ || forkPred->type == Bufferi_ ||
                    forkPred->type == Inst_ || forkPred->type == Branch_ ||
                    forkPred->type == Argument_ || forkPred->type == Phi_ ||
-                   forkPred->type == Phi_n || forkPred->type == Phi_c);
+                   forkPred->type == Phi_n || forkPred->type == Phi_c || forkPred->type == Cst_);
 
             assert(forkEnode->CntrlSuccs->size() + forkEnode->JustCntrlSuccs->size() >
                    1); // at this point, no single-succ forks
             for (auto& forkSucc : *(forkEnode->CntrlSuccs)) {
+                if (!(forkSucc->type == Branch_n || forkSucc->type == Inst_ ||
+                      forkSucc->type == Buffera_ || forkSucc->type == Bufferi_ ||
+                      forkSucc->type == Phi_ || forkSucc->type == Phi_n ||
+                      forkSucc->type == Fifoa_ || forkSucc->type == Fifoi_))
+                    llvm::errs() << getNodeDotNameNew(forkSucc) << "\n";
                 assert(forkSucc->type == Branch_n || forkSucc->type == Inst_ ||
                        forkSucc->type == Buffera_ || forkSucc->type == Bufferi_ ||
                        forkSucc->type == Phi_ || forkSucc->type == Phi_n ||
-                       forkSucc->type == Fifoa_ || forkSucc->type == Fifoi_);
+                       forkSucc->type == Fifoa_ || forkSucc->type == Fifoi_ ||
+                       forkSucc->type == Branch_);
             }
         } else if (enode->type == Fork_c) {
             ENode* forkCEnode = enode;
@@ -355,8 +393,10 @@ void CircuitGenerator::sanityCheckVanilla(std::vector<ENode*>* enode_dag) {
             assert(forkCEnode->JustCntrlPreds->size() == 1);
             ENode* forkCPred = forkCEnode->JustCntrlPreds->front();
 
+            // Jianyi 170322: Added an DASS condition
             assert(forkCPred->type == Phi_c || forkCPred->type == Start_ ||
-                   forkCPred->type == Buffera_ || forkCPred->type == Bufferi_);
+                   forkCPred->type == Buffera_ || forkCPred->type == Bufferi_ ||
+                   (forkCPred->type == Inst_ && forkCPred->Name.find("DASS") != std::string::npos));
 
             assert(forkCEnode->JustCntrlSuccs->size() >=
                    1); // ok to have fork with single sucessor; we can just remove later

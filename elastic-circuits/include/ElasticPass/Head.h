@@ -46,6 +46,8 @@
 #include "Nodes.h"
 #include "Utils.h"
 
+#include "DASS/DASSUtils.h"
+
 using namespace llvm;
 
 // default data and address bitwidths

@@ -104,7 +104,7 @@ private:
     void processLoop(Loop* L);
 
     /// For each loop, finds intersecting accesses, then arranges them into sets
-    void createSets(struct TLLMeta& LM);
+    void createSets(struct TLLMeta& LM, LoopInfo& LI);
 
     /// Determine whether memory instructions @p A and @p B share the same array base
     bool equalBase(const Instruction* A, const Instruction* B) const;

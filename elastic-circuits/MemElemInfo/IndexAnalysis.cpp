@@ -9,7 +9,7 @@
 
 /********** IndexAnalysisPass functions *************/
 bool IndexAnalysisPass::runOnFunction(Function& F) {
-    DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "START\n");
+    LLVM_DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "START\n");
     auto RI = &getAnalysis<RegionInfoPass>().getRegionInfo();
     SI      = getAnalysis<ScopInfoWrapperPass>().getSI();
     LI      = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
@@ -40,11 +40,11 @@ void IndexAnalysisPass::print(llvm::raw_ostream& OS, const Module* M) const {
 }
 
 void IndexAnalysisPass::releaseMemory() {
-    DEBUG(dbgs() << __func__ << " START\n");
+    LLVM_DEBUG(dbgs() << __func__ << " START\n");
     for (auto it : ScopMetas)
         delete it;
     ScopMetas.clear();
-    DEBUG(dbgs() << __func__ << " END\n");
+    LLVM_DEBUG(dbgs() << __func__ << " END\n");
 }
 
 void ScopMeta::print(llvm::raw_ostream& OS) {
@@ -76,7 +76,7 @@ bool hasMemoryReadOrWrite(ScopStmt& Stmt) {
 }
 
 void IndexAnalysisPass::processScop(Scop& S) {
-    DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "START\n");
+    LLVM_DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "START\n");
 
     auto meta = new ScopMeta(S);
     ScopMetas.push_back(meta);
@@ -110,14 +110,14 @@ void IndexAnalysisPass::processScop(Scop& S) {
         else
             IA.instRAWlist.insert(pair);
     }
-    DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "END\n");
+    LLVM_DEBUG(dbgs() << "IndexAnalysisPass:" << __func__ << "END\n");
 }
 
 /**************  ScopMeta functions **************/
 
 /* Returns the maximum common loop depth between 2 instructions*/
 int ScopMeta::getMaxCommonDepth(const Instruction* I0, const Instruction* I1) {
-    DEBUG(dbgs() << *I0 << " and " << *I1 << " \n");
+    LLVM_DEBUG(dbgs() << *I0 << " and " << *I1 << " \n");
     auto BB0   = I0->getParent();
     auto BB1   = I1->getParent();
     int depth0 = LI->getLoopDepth(BB0);
@@ -237,9 +237,9 @@ ScopMeta::ScopMeta(Scop& S) : S(S), TDI(*S.getLI()) {
     scopMinDepth = LI->getLoopDepth(BB) - S.getRelativeLoopDepth(L);
     assert(scopMinDepth > 0);
 
-    DEBUG(if (scopMinDepth > 1) dbgs() << "WARNING: may get strange results for "
-                                       << "scop inside non-scop loop\n"
-                                       << "Will be conservative\n");
+    LLVM_DEBUG(if (scopMinDepth > 1) dbgs() << "WARNING: may get strange results for "
+                                            << "scop inside non-scop loop\n"
+                                            << "Will be conservative\n");
 }
 
 ScopMeta::~ScopMeta() {
@@ -271,8 +271,10 @@ void ScopMeta::addScopStmt(ScopStmt& Stmt) {
 }
 
 void ScopMeta::computeIntersections() {
-    DEBUG(dbgs() << "ScopMeta:" << __func__ << "START\n");
-    DEBUG(for (auto Inst : MemInsts) dbgs() << *Inst << InstToCurrentMap[Inst].to_str() << "\n");
+    LLVM_DEBUG(dbgs() << "ScopMeta:" << __func__ << "START\n");
+    LLVM_DEBUG(for (auto Inst
+                    : MemInsts) dbgs()
+               << *Inst << InstToCurrentMap[Inst].to_str() << "\n");
 
     /* Checking for RAW and WAW conflicts */
     for (auto WrInst : MemInsts) {
@@ -308,7 +310,7 @@ void ScopMeta::computeIntersections() {
                 continue;
             /* No need to check between different arrays */
             if (InstToBase[Inst] != InstToBase[WrInst]) {
-                DEBUG(dbgs() << "Skipping:Diff bases " << *Inst << " and " << *WrInst << "\n");
+                LLVM_DEBUG(dbgs() << "Skipping:Diff bases " << *Inst << " and " << *WrInst << "\n");
                 continue;
             }
 
@@ -344,14 +346,14 @@ void ScopMeta::computeIntersections() {
                 WrInstMap = getMap(WrInst, 0, false);
                 InstMap   = getMap(Inst, 0, false);
             }
-            DEBUG(dbgs() << "Trying intersection of \n"
-                         << *WrInst << " : " << WrInstMap.to_str() << "\nwith \n"
-                         << *Inst << " : " << InstMap.to_str() << "\n");
+            LLVM_DEBUG(dbgs() << "Trying intersection of \n"
+                              << *WrInst << " : " << WrInstMap.to_str() << "\nwith \n"
+                              << *Inst << " : " << InstMap.to_str() << "\n");
 
             isl::map intersect = InstMap.intersect(WrInstMap);
             if (intersect.is_empty().is_false()) {
-                DEBUG(dbgs() << *WrInst << "\t intersects \t" << *Inst << "\n");
-                DEBUG(dbgs() << "Intersection is: " << intersect.to_str() << "\n");
+                LLVM_DEBUG(dbgs() << *WrInst << "\t intersects \t" << *Inst << "\n");
+                LLVM_DEBUG(dbgs() << "Intersection is: " << intersect.to_str() << "\n");
                 Intersections.insert(pair);
             }
         }

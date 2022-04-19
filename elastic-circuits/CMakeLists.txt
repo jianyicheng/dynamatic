@@ -3,7 +3,13 @@ cmake_minimum_required(VERSION 3.0)
 set(LLVM_ROOT "" CACHE PATH "Root of LLVM install.")
 list(APPEND CMAKE_PREFIX_PATH
      "${LLVM_ROOT}/lib/cmake/llvm")
+list(APPEND CMAKE_PREFIX_PATH
+     "${LLVM_ROOT}/lib/cmake/clang")
+list(APPEND CMAKE_PREFIX_PATH
+     "${LLVM_ROOT}/lib/cmake/polly")
 find_package(LLVM REQUIRED CONFIG)
+find_package(Clang REQUIRED CONFIG)
+find_package(Polly REQUIRED CONFIG)
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 add_definitions(${LLVM_DEFINITIONS})
@@ -13,6 +19,7 @@ link_directories(${LLVM_LIBRARY_DIRS})
 
 SET(CMAKE_EXE_LINKER_FLAGS "-static")
 
+# TODO : Set up Polly include
 include_directories(${LLVM_ROOT}/../polly/include)
 include_directories(${LLVM_ROOT}/../polly/lib/External/isl/include)
 include_directories(${LLVM_ROOT}/tools/polly/lib/External/isl/include/)

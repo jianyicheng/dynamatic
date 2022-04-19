@@ -369,7 +369,7 @@ port (
     nReadyArray : in std_logic_vector(0 downto 0);
     pValidArray : in std_logic_vector(INPUTS - 1 downto 0);
     eReadyArray : out std_logic_vector(MEM_INPUTS - 1 downto 0);
-    eValidArray : in std_logic_vector(MEM_INPUTS - 1  downto 0) := (others => '1'));
+    eValidArray : in std_logic_vector(MEM_INPUTS - 1  downto 0));
 end end_node;
 
 architecture arch of end_node is
@@ -501,6 +501,7 @@ begin
     end process; 
 
 end arch;
+
 
 -----------------------------------------------  eagerFork_RegisterBLock
 ------------------------------------------------------------------------
@@ -1760,6 +1761,3 @@ begin
 
         
 end architecture;
-
-
-

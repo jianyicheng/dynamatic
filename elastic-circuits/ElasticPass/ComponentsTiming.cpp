@@ -10,7 +10,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <regex>
 
 using namespace std;
 
@@ -63,46 +62,7 @@ int get_bitsize_index(int datasize) {
     return bitsize_indx;
 }
 
-#define TARGET_PATH	"/etc/dynamatic/data/"
-
-float read_data_from_csv(int component_index, int bitsize_index, std::string data_type, std::string serial_number) {
-    std::string dhls_path(std::getenv("DHLS_INSTALL_DIR"));
-    //std::string filename = dhls_path + "/etc/dynamatic/data/" + data_type + "/" + serial_number + "_" + data_type + ".csv";
-    std::string filename = dhls_path + "/etc/dynamatic/data/targets/" + serial_number + "_" + data_type + ".dat";
-    std::ifstream file(filename, std::ifstream::in);
-
-    float read_data = 0.0;
-    
-    if (!file) {
-        cerr << "Error opening " << filename << " use default values instead" << endl;
-        //filename = dhls_path + "/etc/dynamatic/data/" + data_type + "/" + "default_" + data_type + ".csv";
-        filename = dhls_path + "/etc/dynamatic/data/targets/" + "default_" + data_type + ".dat";
-        file = std::ifstream(filename, std::ifstream::in);
-    } 
-
-    std::string line;
-    int max_index = component_index+1 > CMP_MAX ? CMP_MAX : component_index+1;
-    
-    for (int i = 0; i<max_index; ++i) {
-        std::getline(file, line);
-    }
-    
-    std::regex regex("\\,");
-
-    std::vector<std::string> out(
-            std::sregex_token_iterator(line.begin(), line.end(), regex, -1),
-            std::sregex_token_iterator()
-    );
-
-    read_data = std::stof(out[bitsize_index]);
-
-    file.close();
-    
-
-    return read_data;
-}
-
-float get_component_delay(std::string component, int datasize, std::string serial_number) {
+float get_component_delay(std::string component, int datasize) {
     float route_delay = ROUTING_DELAY_0;
 
     if (get_pragma_generic("USE_ROUTE_DELAY_10")) {
@@ -118,10 +78,10 @@ float get_component_delay(std::string component, int datasize, std::string seria
         route_delay = ROUTING_DELAY_40;
     }
 
-    return (read_data_from_csv(get_component_index(component), get_bitsize_index(datasize), "delay", serial_number) *
+    return (datapath_delay[get_component_index(component)][get_bitsize_index(datasize)] *
             route_delay);
 }
 
-int get_component_latency(std::string component, int datasize, std::string serial_number) {
-    return (int) read_data_from_csv(get_component_index(component), get_bitsize_index(datasize), "latency", serial_number);
+int get_component_latency(std::string component, int datasize) {
+    return datapath_latency[get_component_index(component)][get_bitsize_index(datasize)];
 }

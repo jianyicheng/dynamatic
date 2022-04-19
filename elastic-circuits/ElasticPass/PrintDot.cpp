@@ -1,7 +1,7 @@
 #include "ElasticPass/ComponentsTiming.h"
 #include "ElasticPass/Memory.h"
-#include "ElasticPass/Utils.h"
 #include "ElasticPass/Pragmas.h"
+#include "ElasticPass/Utils.h"
 
 using namespace std;
 
@@ -9,16 +9,8 @@ std::string NEW_LINE("\n");
 std::string DHLS_VERSION("0.1.1");
 
 #define BB_MINLEN 3
-#define DATA_SIZE 32
 #define COND_SIZE 1
 #define CONTROL_SIZE 0
-
-#define BRANCH_CONDITION_IN 1
-#define MUX_CONDITION_IN 0
-#define CMERGE_CONDITION_OUT 1
-
-std::string inputSuffix (ENode* enode, unsigned i);
-std::string outputSuffix(ENode* enode, unsigned i);
 
 std::ofstream dotfile;
 
@@ -155,24 +147,87 @@ bool isLSQport(ENode* enode) {
     return false;
 }
 
-// check llvm instruction operands to connect enode with instruction successor
-int getOperandIndex(ENode* enode, ENode* enode_succ) {
+// Jianyi 03072021: Make fetching value from enode as a function.
+static const Value* getENodeValue(ENode* enode, ENode* enode_succ) {
+    // purposefully not in if-else because of issues with dyn_cast
     const Value* V;
+    if (enode->Instr) {
+        // Jianyi: temporary hack for call nodes: assuming only one output
+        if (auto callInst = dyn_cast<CallInst>(enode->Instr)) {
+            for (auto i = 0; i < callInst->getNumOperands(); i++) {
+                auto op = callInst->getOperand(i);
+                if (op == callInst->getCalledFunction())
+                    continue;
+
+                if (op->getType()->isPointerTy()) {
+                    bool noGEP = true;
+                    for (auto user : op->users())
+                        if (isa<GetElementPtrInst>(user))
+                            noGEP = false;
+                    if (noGEP) {
+                        for (int i = 0; i < (int)enode_succ->CntrlPreds->size(); i++) {
+                            auto inst = dyn_cast<LoadInst>(enode_succ->Instr->getOperand(i));
+                            if (!inst)
+                                continue;
+                            if (op == inst->getPointerOperand())
+                                V = enode_succ->Instr->getOperand(i);
+                        }
+                    }
+                }
+            }
+        } else
+            V = dyn_cast<Value>(enode->Instr);
+    }
+    if (enode->A)
+        V = dyn_cast<Value>(enode->A);
+    if (enode->CI)
+        V = dyn_cast<Value>(enode->CI);
+    if (enode->CF)
+        V = dyn_cast<Value>(enode->CF);
+    return V;
+}
+
+static ENode* getInstrInput(ENode* node, int index, ENode* enode_succ) {
+    auto inNode = (*node->CntrlPreds)[index];
+    while (!(inNode->Instr || inNode->A || inNode->type == Cst_)) {
+        if (inNode->type == Fork_ || inNode->type == Fork_c || inNode->type == Phi_n)
+            inNode = (*inNode->CntrlPreds)[0];
+        else if (inNode->type == Branch_n) {
+            // This is a bit tricky as we need to find the correct value from the two inputs
+            auto in0 = inNode->CntrlPreds->at(0);
+            if (in0->type == Fork_ || in0->type == Fork_c)
+                in0 = in0->CntrlPreds->at(0);
+            auto in1 = inNode->CntrlPreds->at(1);
+            if (in1->type == Fork_ || in1->type == Fork_c)
+                in1 = in1->CntrlPreds->at(0);
+            assert(in0->type == Branch_ || in1->type == Branch_);
+            if (in0->type == Branch_ && in1->type == Branch_)
+                inNode = (in0->Instr) ? in0 : in1;
+            else
+                inNode = (in0->type == Branch_) ? in1 : in0;
+        } else
+            llvm_unreachable(std::string(getNodeDotNameNew(node) +
+                                         ": Found unrecognized input elastic node type for node: " +
+                                         getNodeDotNameNew(inNode))
+                                 .c_str());
+    }
+    return inNode;
+}
+
+// check llvm instruction operands to connect enode with instruction successor
+int getOperandIndex(ENode* srcEnode, ENode* enode_succ) {
+    // Jianyi 03072021: Added enode tracing back till the value is accessable.
+    auto enode = srcEnode;
+    if (enode_succ->Instr && enode_succ->type == Inst_ &&
+        !(srcEnode->Instr || srcEnode->A || srcEnode->type == Cst_))
+        enode = getInstrInput(srcEnode, 0, enode_succ);
 
     // force load address from predecessor to port 2
     if (enode_succ->Instr->getOpcode() == Instruction::Load && enode->type != MC_ &&
         enode->type != LSQ_)
         return 2;
 
-    // purposefully not in if-else because of issues with dyn_cast
-    if (enode->Instr != NULL)
-        V = dyn_cast<Value>(enode->Instr);
-    if (enode->A != NULL)
-        V = dyn_cast<Value>(enode->A);
-    if (enode->CI != NULL)
-        V = dyn_cast<Value>(enode->CI);
-    if (enode->CF != NULL)
-        V = dyn_cast<Value>(enode->CF);
+    auto V = getENodeValue(enode, enode_succ);
 
     // for getelementptr, use preds ordering because operands can have identical values
     if (enode_succ->Instr->getOpcode() == Instruction::GetElementPtr)
@@ -180,7 +235,7 @@ int getOperandIndex(ENode* enode, ENode* enode_succ) {
 
     // if both operands are constant, values could be the same
     // return index in predecessor array
-    if (enode->CI != NULL || enode->CF != NULL) {
+    if (enode->CI || enode->CF) {
         if (enode_succ->CntrlPreds->size() >= 2)
             if (enode_succ->Instr->getOperand(0) == enode_succ->Instr->getOperand(1))
                 return indexOf(enode_succ->CntrlPreds, enode) + 1;
@@ -192,8 +247,14 @@ int getOperandIndex(ENode* enode, ENode* enode_succ) {
         }
 
     // special case for store which predecessor not found
-    if (enode_succ->Instr->getOpcode() == Instruction::Store)
+    if (enode_succ->Instr->getOpcode() == Instruction::Store) {
+        llvm::errs() << "Warning: Special case captured for store op: node "
+                     << getNodeDotNameNew(srcEnode) << " traced to " << getNodeDotNameNew(enode)
+                     << " -> " << getNodeDotNameNew(enode_succ) << "\n\tValue: " << *V
+                     << "\n\tStore: " << *(enode_succ->Instr) << "\n";
+
         return 2;
+    }
 
     return 1;
 }
@@ -226,9 +287,9 @@ int getInPortSize(ENode* enode, int index) {
         return COND_SIZE;
 
     } else if (enode->type == Inst_) {
-        if (enode->Instr->getOpcode() == Instruction::Select && index == 0)
+        if (enode->Instr && enode->Instr->getOpcode() == Instruction::Select && index == 0)
             return COND_SIZE;
-        else if (enode->Instr->getOpcode() == Instruction::GetElementPtr)
+        else if (enode->Instr && enode->Instr->getOpcode() == Instruction::GetElementPtr)
             return DATA_SIZE;
         else
             return (enode->JustCntrlPreds->size() > 0) ? CONTROL_SIZE : DATA_SIZE;
@@ -253,17 +314,17 @@ int getInPortSize(ENode* enode, int index) {
         return DATA_SIZE;
     } else if (enode->type == Start_) {
         return CONTROL_SIZE;
-    } else if (enode->type == Sink_ || enode->type == End_) {
+    } else if (enode->type == Sink_) {
         return enode->CntrlPreds->size() > 0 ? DATA_SIZE : CONTROL_SIZE;
     }
 }
 
 int getOutPortSize(ENode* enode, int index) {
     if (enode->type == Inst_) {
-        if (enode->Instr->getOpcode() == Instruction::ICmp ||
-            enode->Instr->getOpcode() == Instruction::FCmp)
+        if (enode->Instr && (enode->Instr->getOpcode() == Instruction::ICmp ||
+                             enode->Instr->getOpcode() == Instruction::FCmp))
             return COND_SIZE;
-        else if (enode->Instr->getOpcode() == Instruction::GetElementPtr)
+        else if (enode->Instr && enode->Instr->getOpcode() == Instruction::GetElementPtr)
             return DATA_SIZE;
         else
             return (enode->JustCntrlPreds->size() > 0) ? CONTROL_SIZE : DATA_SIZE;
@@ -277,14 +338,18 @@ int getOutPortSize(ENode* enode, int index) {
 }
 unsigned int getConstantValue(ENode* enode) {
 
-    if (enode->CI != NULL)
+    if (enode->CI)
         return enode->CI->getSExtValue();
-    else if (enode->CF != NULL) {
+    else if (enode->CF) {
         ConstantFP* constfp_gv = llvm::dyn_cast<llvm::ConstantFP>(enode->CF);
         float gv_fpval         = (constfp_gv->getValueAPF()).convertToFloat();
         return *(unsigned int*)&gv_fpval;
     } else
         return enode->cstValue;
+}
+
+static std::string shiftedBlock(std::string block, int offset) {
+    return "block" + std::to_string(std::stoi(block.substr(block.find("block") + 5)) - offset);
 }
 
 void printDotCFG(std::vector<BBNode*>* bbnode_dag, std::string name) {
@@ -304,18 +369,25 @@ void printDotCFG(std::vector<BBNode*>* bbnode_dag, std::string name) {
     s += "//DHLS version: " + DHLS_VERSION;
     s += "\" [shape = \"none\" pos = \"20,20!\"]\n";
 
+    int offset = 1000;
+    for (auto bnd : *bbnode_dag) {
+        auto bbName = bnd->BB->getName().str();
+        offset      = std::min(offset, std::stoi(bbName.substr(bbName.find("block") + 5)));
+    }
+    offset--;
+
     for (auto& bnd : *bbnode_dag) {
         s += "\t\t\"";
-        s += bnd->BB->getName().str().c_str();
+        s += shiftedBlock(bnd->BB->getName().str(), offset);
         s += "\";\n";
     }
 
     for (auto& bnd : *bbnode_dag) {
         for (auto& bnd_succ : *(bnd->CntrlSuccs)) {
             s += "\t\t\"";
-            s += bnd->BB->getName().str().c_str();
+            s += shiftedBlock(bnd->BB->getName().str(), offset);
             s += "\" -> \"";
-            s += bnd_succ->BB->getName().str().c_str();
+            s += shiftedBlock(bnd_succ->BB->getName().str(), offset);
             s += "\" [color = \"";
             // back edge if BB succ has id smaller or equal (self-edge) to bb
             s += (bnd_succ->Idx <= bnd->Idx) ? "red" : "blue";
@@ -338,7 +410,8 @@ std::string getNodeDotNameNew(ENode* enode) {
     switch (enode->type) {
         case Branch_: // treat llvm branch as constant
             name += "brCst_";
-            name += enode->BB->getName().str().c_str();
+            name += to_string(enode->id);
+            // enode->BB->getName().str().c_str();
             break;
         case LSQ_:
             name += "LSQ_";
@@ -455,6 +528,8 @@ std::string getFuncName(ENode* enode) {
 
 std::string getNodeDotOp(ENode* enode) {
     string name = ", op = \"";
+    if (!enode->Instr)
+        return name + enode->Name + "_op\"";
     switch (enode->Instr->getOpcode()) {
         case Instruction::ICmp:
             name += getIntCmpType(enode);
@@ -479,9 +554,24 @@ std::string getNodeDotOp(ENode* enode) {
             // name += ", offset= " + to_string(getBBOffset(enode));
             break;
         case Instruction::Call:
-            name += enode->Name;
-            name += "_op\", ";
-            name += "function = \"" + getFuncName(enode) + "\" ";
+            if (auto F = dyn_cast<Function>(dyn_cast<CallInst>(enode->Instr)
+                                                ->getOperand(enode->Instr->getNumOperands() - 1))) {
+                if (F->hasFnAttribute("dass_ss")) {
+                    name += "call_";
+                    name += F->getName().str();
+                    name += "\", ";
+                } else {
+                    name += enode->Name;
+                    name += "_op\", ";
+                }
+                name += "function = \"" + getFuncName(enode) + "\" ";
+            } else {
+                llvm::errs() << *(enode->Instr) << "\n";
+                llvm::errs() << *(dyn_cast<CallInst>(enode->Instr)
+                                      ->getOperand(enode->Instr->getNumOperands() - 1))
+                             << "\n";
+                llvm_unreachable("Cannot find callee for call instruction");
+            }
             break;
         default:
             name += enode->Name;
@@ -492,11 +582,11 @@ std::string getNodeDotOp(ENode* enode) {
     return name;
 }
 
-std::string inputSuffix (ENode* enode, int i) {
+std::string inputSuffix(ENode* enode, int i) {
     if (i == 0 && enode->isMux)
         return "?";
     if (enode->type == Inst_)
-        if (enode->Instr->getOpcode() == Instruction::Select) {
+        if (enode->Instr && enode->Instr->getOpcode() == Instruction::Select) {
             if (i == 0)
                 return "?";
             if (i == 1)
@@ -541,7 +631,7 @@ std::string getNodeDotInputs(ENode* enode) {
                 name += ":";
                 name += to_string(getInPortSize(enode, i)) + " ";
             }
-            if (enode->type == Inst_)
+            if (enode->type == Inst_ && enode->Instr)
                 if (enode->Instr->getOpcode() == Instruction::Load)
                     name += "in2:32";
             name += "\"";
@@ -558,7 +648,7 @@ std::string getNodeDotInputs(ENode* enode) {
             }
 
             for (auto& pred : *enode->CntrlPreds) {
-                if (pred->type != Cst_ && pred->type !=LSQ_) {
+                if (pred->type != Cst_ && pred->type != LSQ_) {
 
                     name +=
                         "in" + to_string(getDotAdrIndex(pred, enode)) + ":" + to_string(ADDR_SIZE);
@@ -572,18 +662,20 @@ std::string getNodeDotInputs(ENode* enode) {
                     }
                 }
                 if (pred->type == LSQ_) {
-                	int inputs = getMemInputCount(enode);
-                	int pred_ld_id = pred->lsqMCLoadId;
+                    int inputs     = getMemInputCount(enode);
+                    int pred_ld_id = pred->lsqMCLoadId;
                     int pred_st_id = pred->lsqMCStoreId;
-                    name += "in" + to_string (inputs + 1) + ":" + to_string(ADDR_SIZE) + "*l" + to_string(pred_ld_id) + "a ";
-                    name += "in" + to_string (inputs + 2) + ":" + to_string(ADDR_SIZE)+ "*s" + to_string(pred_st_id) + "a ";
-                    name += "in" + to_string (inputs + 3) + ":" + to_string(DATA_SIZE)+ "*s" + to_string(pred_st_id) + "d ";
-
+                    name += "in" + to_string(inputs + 1) + ":" + to_string(ADDR_SIZE) + "*l" +
+                            to_string(pred_ld_id) + "a ";
+                    name += "in" + to_string(inputs + 2) + ":" + to_string(ADDR_SIZE) + "*s" +
+                            to_string(pred_st_id) + "a ";
+                    name += "in" + to_string(inputs + 3) + ":" + to_string(DATA_SIZE) + "*s" +
+                            to_string(pred_st_id) + "d ";
                 }
             }
             if (enode->type == LSQ_ && enode->lsqToMC == true) {
-            	int inputs = getMemInputCount(enode);
-                name += "in" + to_string (inputs + 1) + ":" + to_string(DATA_SIZE) + "*x0d ";
+                int inputs = getMemInputCount(enode);
+                name += "in" + to_string(inputs + 1) + ":" + to_string(DATA_SIZE) + "*x0d ";
             }
             name += "\"";
             break;
@@ -645,10 +737,10 @@ std::string getNodeDotOutputs(ENode* enode) {
                 }
             }
             if (enode->type == Inst_)
-                if (enode->Instr->getOpcode() == Instruction::Store)
+                if (enode->Instr && enode->Instr->getOpcode() == Instruction::Store)
                     name += "out2:32";
-
-            name += "\"";
+            if (enode->CntrlSuccs->size() > 0 || enode->JustCntrlSuccs->size() > 0)
+                name += "\"";
             break;
 
         case Phi_c:
@@ -661,7 +753,7 @@ std::string getNodeDotOutputs(ENode* enode) {
         case LSQ_:
         case MC_:
             name += ", out = \"";
-           
+
             if (getMemOutputCount(enode) > 0 || enode->lsqToMC) {
                 for (auto& pred : *enode->CntrlPreds) {
                     if (pred->type != Cst_ && pred->type != LSQ_)
@@ -671,23 +763,27 @@ std::string getNodeDotOutputs(ENode* enode) {
                             name += "*l" + to_string(pred->memPortId) + "d ";
                         }
                     if (pred->type == LSQ_)
-                        name += "out" + to_string (getMemOutputCount(enode ) + 1) + ":" + to_string(DATA_SIZE)+ "*l" + to_string(pred->lsqMCLoadId) + "d ";
+                        name += "out" + to_string(getMemOutputCount(enode) + 1) + ":" +
+                                to_string(DATA_SIZE) + "*l" + to_string(pred->lsqMCLoadId) + "d ";
                 }
             }
 
             if (enode->type == MC_ && enode->lsqToMC == true)
                 name += "out" + to_string(getMemOutputCount(enode) + 2) + ":" +
                         to_string(CONTROL_SIZE) + "*e ";
-            else 
+            else
                 name += "out" + to_string(getMemOutputCount(enode) + 1) + ":" +
-                    to_string(CONTROL_SIZE) + "*e ";
+                        to_string(CONTROL_SIZE) + "*e ";
 
             if (enode->type == LSQ_ && enode->lsqToMC == true) {
-                name += "out" + to_string (getMemOutputCount(enode) + 2) + ":" + to_string(ADDR_SIZE) + "*x0a ";
-                name += "out" + to_string (getMemOutputCount(enode) + 3) + ":" + to_string(ADDR_SIZE) + "*y0a ";
-                name += "out" + to_string (getMemOutputCount(enode) + 4) + ":" + to_string(DATA_SIZE) + "*y0d ";
+                name += "out" + to_string(getMemOutputCount(enode) + 2) + ":" +
+                        to_string(ADDR_SIZE) + "*x0a ";
+                name += "out" + to_string(getMemOutputCount(enode) + 3) + ":" +
+                        to_string(ADDR_SIZE) + "*y0a ";
+                name += "out" + to_string(getMemOutputCount(enode) + 4) + ":" +
+                        to_string(DATA_SIZE) + "*y0d ";
             }
-            
+
             name += "\"";
             break;
         case End_:
@@ -695,7 +791,7 @@ std::string getNodeDotOutputs(ENode* enode) {
 
             if (enode->CntrlPreds->size() > 0)
                 name += to_string(DATA_SIZE);
-            else 
+            else
                 name += to_string(CONTROL_SIZE);
             name += "\"";
             break;
@@ -705,445 +801,6 @@ std::string getNodeDotOutputs(ENode* enode) {
 
     return name;
 }
-
-
-std::string inputSuffix (ENode* enode, unsigned idx) {    
-    switch (enode->type)
-    {
-    case Inst_:
-        if (enode->Instr->getOpcode() == Instruction::Select) {
-            if (idx == 0)
-                return "?";
-            else if (idx == 1)
-                return "+";
-            else if (idx == 2)
-                return "-";
-        }
-        break;
-
-    case Branch_c:
-    case Branch_n:
-        return idx == BRANCH_CONDITION_IN ? "?" : "";
-
-    case Phi_:
-    case Phi_c:
-    case Phi_n:
-        if (enode->isMux && idx == MUX_CONDITION_IN)
-            return "?";
-        return "";
-    
-    default:
-        break;
-    }
-
-    return "";
-}
-int getInPortSize_withOB(ENode* enode, unsigned index) {
-    switch (enode->type)
-    {
-    case Branch_: // 1 input nodes
-    case Cst_:
-    case Fork_:
-    case Fork_c:
-    case Buffera_:
-    case Bufferi_:
-    case Start_:
-    case Source_:
-    case Sink_:
-        return enode->sizes_preds.at(0);
-    case Argument_:
-        return DATA_SIZE; // force Arguments to be 32 bits
-
-    case Branch_n:
-    case Branch_c: {
-        bool isCondition = index == BRANCH_CONDITION_IN;
-
-        unsigned i = 0;
-        for (const ENode* pred : *enode->CntrlPreds) {
-            if (isBranchConditionEdge(pred, enode) == isCondition)
-                return enode->sizes_preds.at(i);
-            i += 1;
-        }
-        for (const ENode* pred : *enode->JustCntrlPreds) {
-            if (isBranchConditionEdge(pred, enode) == isCondition)
-                return enode->sizes_preds.at(i);
-            i += 1;
-        }
-        assert (false && "Illegal state : branch should have both a condition and non-condition input");
-    }
-
-    case Phi_: // n inputs
-    case Phi_n:
-    case Phi_c:
-        // if node is a mux, and index holds MuxCondition
-        if (enode->isMux && index == MUX_CONDITION_IN) {
-            int i = 0;
-            for (const ENode* pred : *enode->CntrlPreds) {
-                if (isMuxConditionEdge(pred, enode))
-                    return enode->sizes_preds.at(i);
-                i += 1;
-            }
-            for (const ENode* pred : *enode->JustCntrlPreds) {
-                if (isMuxConditionEdge(pred, enode))
-                    return enode->sizes_preds.at(i);
-                i += 1;
-            }
-
-            assert (false && "Expected 1 port holding the Mux condition");
-        }
-        // else return the output size ; careful to take the correct output if enode is CMerge
-        else if (enode->isCntrlMg) {
-
-            int i = 0;
-            for (const ENode* succ : *enode->CntrlSuccs) {
-                if (!isCMergeConditionEdge(enode, succ))
-                    return enode->sizes_succs.at(i);
-                i += 1;
-            }
-            for (const ENode* succ : *enode->JustCntrlSuccs) {
-                if (!isCMergeConditionEdge(enode, succ))
-                    return enode->sizes_succs.at(i);
-                i += 1;
-            }
-            
-            assert (false && "Expected 1 port not holding the CMerge condition");
-        }
-        else {
-            return enode->sizes_succs.at(0);
-        }
-    
-    case Inst_: {
-        unsigned opcode = enode->Instr->getOpcode();
-        // special instructions that do not take output_size as input
-        if (opcode == Instruction::ICmp || opcode == Instruction::FCmp
-            || opcode == Instruction::LShr || opcode == Instruction::AShr
-            || opcode == Instruction::SDiv || opcode == Instruction::UDiv
-            || opcode == Instruction::SRem || opcode == Instruction::URem) {
-            
-            // search for maximum in input/output and use it
-            unsigned max_bw = 0;
-            for (unsigned i = 0 ; i < enode->CntrlPreds->size() + enode->JustCntrlPreds->size() ; ++i)
-                max_bw = std::max<unsigned>(max_bw, enode->sizes_preds.at(i));
-            for (unsigned i = 0 ; i < enode->CntrlSuccs->size() + enode->JustCntrlSuccs->size() ; ++i)
-                max_bw = std::max<unsigned>(max_bw, enode->sizes_succs.at(i));
-
-            // if the comparison is signed, and that bitwidth < 32 (unsigned inputs), add 1 bit to make sure sign bit=0
-            if (opcode == Instruction::ICmp && dyn_cast<ICmpInst>(enode->Instr)->isSigned())
-                max_bw = std::min<unsigned>(DATA_SIZE, max_bw + 1);
-            
-            return max_bw;
-        }
-        else if (opcode == Instruction::Select) {
-            // condition input ?
-            if (index == 0)
-                return enode->sizes_preds.at(0);
-            else
-                return std::max(enode->sizes_preds.at(1), enode->sizes_preds.at(2));
-        }
-        else {
-            return enode->sizes_succs.at(0);
-        }
-    }
-    default:
-        break;
-    }
-    
-    return DATA_SIZE;
-}
-std::string getNodeDotInputs_withOB(ENode* enode) {
-    string name = "";
-
-    switch (enode->type) {
-        case Argument_:
-        case Branch_:
-        case Fork_:
-        case Fork_c:
-        case Buffera_:
-        case Bufferi_:
-        case Cst_:
-        case Start_:
-        case Sink_:
-            name += ", in = \"in1:" + to_string(getInPortSize_withOB(enode, 0)) + "\"";
-            break;
-
-        case Branch_n:
-        case Branch_c:
-            name += ",  in = \"in1:" + to_string(getInPortSize_withOB(enode, 0));
-            name += " in2?:" + to_string(getInPortSize_withOB(enode, 1)) + "\"";
-            break;
-
-        case Inst_:
-            name += ", in = \"";
-
-            // conflict in sizes with MC_/LSQ_ nodes
-            //workaround: force IOs to 32
-            if (enode->Instr->getOpcode() == Instruction::Load || enode->Instr->getOpcode() == Instruction::Store) {
-                name += "in1:32 in2:32";
-            }
-            else {
-                for (unsigned i = 0 ; i < enode->CntrlPreds->size() + enode->JustCntrlPreds->size() ; ++i) {
-                    name += "in" + to_string(i + 1);
-                    name += inputSuffix(enode, i);
-                    name += ":";
-                    name += to_string(getInPortSize_withOB(enode, i)) + " ";
-                }
-            }
-            name += "\"";
-            break;
-
-        case Phi_:
-        case Phi_n:
-        case Phi_c:
-            name += ", in = \"";
-
-            for (unsigned i = 0 ; i < enode->CntrlPreds->size() + enode->JustCntrlPreds->size() ; ++i) {
-                name += "in" + to_string(i + 1);
-                name += inputSuffix(enode, i);
-                name += ":";
-                name += to_string(getInPortSize_withOB(enode, i)) + " ";
-            }
-
-            name += "\"";
-            break;
-
-        case LSQ_:
-        case MC_:
-            name += ", in = \"";
-
-            for (int i = 0; i < (int)enode->JustCntrlPreds->size(); i++) {
-                name += "in" + to_string(i + 1) + ":" +
-                        to_string(enode->type == MC_ ? DATA_SIZE : CONTROL_SIZE);
-                name += "*c" + to_string(i) + " ";
-            }
-
-            for (auto& pred : *enode->CntrlPreds) {
-                if (pred->type != Cst_ && pred->type !=LSQ_) {
-
-                    name +=
-                        "in" + to_string(getDotAdrIndex(pred, enode)) + ":" + to_string(ADDR_SIZE);
-                    name += (pred->Instr->getOpcode() == Instruction::Load) ? "*l" : "*s";
-                    name += to_string(pred->memPortId) + "a ";
-
-                    if (pred->Instr->getOpcode() == Instruction::Store) {
-                        name += "in" + to_string(getDotDataIndex(pred, enode)) + ":" +
-                                to_string(DATA_SIZE);
-                        name += "*s" + to_string(pred->memPortId) + "d ";
-                    }
-                }
-                if (pred->type == LSQ_) {
-                	int inputs = getMemInputCount(enode);
-                	int pred_ld_id = pred->lsqMCLoadId;
-                    int pred_st_id = pred->lsqMCStoreId;
-                    name += "in" + to_string (inputs + 1) + ":" + to_string(ADDR_SIZE) + "*l" + to_string(pred_ld_id) + "a ";
-                    name += "in" + to_string (inputs + 2) + ":" + to_string(ADDR_SIZE)+ "*s" + to_string(pred_st_id) + "a ";
-                    name += "in" + to_string (inputs + 3) + ":" + to_string(DATA_SIZE)+ "*s" + to_string(pred_st_id) + "d ";
-
-                }
-            }
-            if (enode->type == LSQ_ && enode->lsqToMC == true) {
-            	int inputs = getMemInputCount(enode);
-                name += "in" + to_string (inputs + 1) + ":" + to_string(DATA_SIZE) + "*x0d ";
-            }
-            name += "\"";
-            break;
-
-        case End_: {
-            name += ", in = \"";
-            
-            unsigned maxBitwidth = 0;
-            for (unsigned i = 0 ; i < enode->JustCntrlPreds->size() + enode->CntrlPreds->size() ; ++i)
-                maxBitwidth = std::max(maxBitwidth, enode->sizes_preds.at(i));
-                
-            for (unsigned i = 0 ; i < enode->JustCntrlPreds->size() ; ++i) {
-                const ENode* pred = enode->JustCntrlPreds->at(i);
-
-                name += "in" + to_string(i + 1) + ":" + to_string(CONTROL_SIZE);
-                // if its not memory, it is the single control port
-                if (pred->type == MC_ || pred->type == LSQ_)
-                    name += "*e";
-                name += " ";
-            }
-
-            for (unsigned i = 0 ; i < enode->CntrlPreds->size() ; ++i)
-                name += "in" + to_string(enode->JustCntrlPreds->size() + i + 1) + ":" + to_string(maxBitwidth) + " ";
-
-            name += "\"";
-
-        }   break;
-
-        default:
-            break;
-    }
-    return name;
-}
-
-std::string outputSuffix (ENode* enode, unsigned idx) {
-    switch (enode->type)
-    {
-    case Branch_n:
-    case Branch_c:
-        return idx == 0 ? "+" : "-";
-
-    case Phi_:
-    case Phi_n:
-    case Phi_c:
-        if (enode->isCntrlMg && idx == CMERGE_CONDITION_OUT)
-            return "?";
-    
-    default:
-        break;
-    }
-    return "";
-}
-int getOutPortSize_withOB(ENode* enode, unsigned index) {
-    switch (enode->type) {
-        case Phi_c: // CMerge? 
-            if (enode->isCntrlMg) {
-                bool isCondition = index == CMERGE_CONDITION_OUT;
-                
-                unsigned i = 0;
-                for (const ENode* succ : *enode->CntrlSuccs) {
-                    if (isCMergeConditionEdge(enode, succ) == isCondition)
-                        return enode->sizes_succs.at(i);
-                    i += 1;
-                }
-                for (const ENode* succ : *enode->JustCntrlSuccs) {
-                    if (isCMergeConditionEdge(enode, succ) == isCondition)
-                        return enode->sizes_succs.at(i);
-                    i += 1;
-                }
-
-                assert (false && "Illegal state : CMerges must have both a condition and non-condition output");
-            }
-            // else:
-        case Buffera_: // 1 output node
-        case Bufferi_:
-        case Branch_:
-        case Phi_:
-        case Phi_n:
-        case Start_:
-        case Source_:
-        case Cst_:
-        case End_:
-            return enode->sizes_succs.at(0);
-        case Argument_:
-            return DATA_SIZE; // force Arguments to be 32 bits
-
-        case Branch_n:
-        case Branch_c: // output sizes depend on input_size (non-condition) : they're the same anyway
-            return enode->sizes_succs.at(0);
-
-        case Fork_:
-        case Fork_c: // output sizes == input_size
-            return enode->sizes_preds.at(0);
-
-        case Inst_:
-            return enode->sizes_succs.at(index);
-        default:
-            break;
-    }
-
-    return DATA_SIZE;
-}
-std::string getNodeDotOutputs_withOB(ENode* enode) {
-    string name = "";
-
-    switch (enode->type) {
-        case Argument_: // 1 output node
-        case Buffera_:
-        case Bufferi_:
-        case Cst_:
-        case Branch_:
-        case Phi_:
-        case Phi_n:
-        case Start_:
-        case Source_:
-        case End_:
-            name += ", out = \"out1:" + to_string(getOutPortSize_withOB(enode, 0)) + "\"";
-            break;
-
-        case Branch_n:
-        case Branch_c:
-            name += ", out = \"out1+:" + to_string(getOutPortSize_withOB(enode, 0));
-            name += " out2-:" + to_string(getOutPortSize_withOB(enode, 0)) + "\"";
-            break;
-
-        case Fork_:
-        case Fork_c:
-            name += ", out = \"";
-            for (unsigned i = 0 ; i < enode->CntrlSuccs->size() + enode->JustCntrlSuccs->size() ; i++) {
-                name += "out" + to_string(i + 1) + ":";
-                name += to_string(getOutPortSize_withOB(enode, 0)) + " ";
-            }
-            name += "\"";
-            break;
-
-        case Inst_:
-            if (!enode->CntrlSuccs->empty() || !enode->JustCntrlSuccs->empty()) {    
-                name += ", out = \"";
-                
-                if (enode->Instr->getOpcode() == Instruction::Load || enode->Instr->getOpcode() == Instruction::Store) {
-                    name += "out1:32 out2:32";
-                }
-                else {
-                    for (unsigned i = 0 ; i < enode->CntrlSuccs->size() + enode->JustCntrlSuccs->size() ; i++) {
-                        name += "out" + to_string(i + 1) + ":";
-                        name += to_string(getOutPortSize_withOB(enode, i)) + " ";
-                    }
-                }
-            
-                name += "\"";
-            }
-            break;
-
-        case Phi_c:
-            name += ", out = \"";
-            name += "out1:" + to_string(getOutPortSize_withOB(enode, 0));
-            if (enode->isCntrlMg)
-                name += " out2?:" + to_string(getOutPortSize_withOB(enode, 1));
-            name += "\"";
-            break;
-
-        case LSQ_:
-        case MC_:
-            name += ", out = \"";
-           
-            if (getMemOutputCount(enode) > 0 || enode->lsqToMC) {
-                for (auto& pred : *enode->CntrlPreds) {
-                    if (pred->type != Cst_ && pred->type != LSQ_)
-                        if (pred->Instr->getOpcode() == Instruction::Load) {
-                            name += "out" + to_string(getDotDataIndex(pred, enode)) + ":" +
-                                    to_string(DATA_SIZE);
-                            name += "*l" + to_string(pred->memPortId) + "d ";
-                        }
-                    if (pred->type == LSQ_)
-                        name += "out" + to_string (getMemOutputCount(enode ) + 1) + ":" + to_string(DATA_SIZE)+ "*l" + to_string(pred->lsqMCLoadId) + "d ";
-                }
-            }
-
-            if (enode->type == MC_ && enode->lsqToMC == true)
-                name += "out" + to_string(getMemOutputCount(enode) + 2) + ":" +
-                        to_string(CONTROL_SIZE) + "*e ";
-            else 
-                name += "out" + to_string(getMemOutputCount(enode) + 1) + ":" +
-                    to_string(CONTROL_SIZE) + "*e ";
-
-            if (enode->type == LSQ_ && enode->lsqToMC == true) {
-                name += "out" + to_string (getMemOutputCount(enode) + 2) + ":" + to_string(ADDR_SIZE) + "*x0a ";
-                name += "out" + to_string (getMemOutputCount(enode) + 3) + ":" + to_string(ADDR_SIZE) + "*y0a ";
-                name += "out" + to_string (getMemOutputCount(enode) + 4) + ":" + to_string(DATA_SIZE) + "*y0d ";
-            }
-            
-            name += "\"";
-            break;
-
-        default:
-            break;
-    }
-
-    return name;
-}
-
 
 std::string getFloatValue(float x) {
 #define nodeDotNameSIZE 100
@@ -1159,36 +816,40 @@ std::string getHexValue(int x) {
     return string(nodeDotName);
 }
 
-std::string getNodeDotParams(ENode* enode, std::string serial_number) {
+std::string getNodeDotParams(ENode* enode) {
     string name = "";
     switch (enode->type) {
         case Branch_:
             name += ", value = \"0x1\"";
             break;
         case Inst_:
-            if (enode->Instr->getOpcode() == Instruction::GetElementPtr)
-                 name += ", constants=" + to_string(enode->JustCntrlPreds->size());
-            if (enode->Instr->getOpcode() == Instruction::Select)
-                 name += ", trueFrac=0.2";
-            name += ", delay=" + getFloatValue(get_component_delay(enode->Name, DATA_SIZE, serial_number));
-            
-            if (isLSQport(enode))
-                name += ", latency=" + to_string(get_component_latency(("lsq_" + enode->Name), DATA_SIZE, serial_number));
-            else
-                name += ", latency=" + to_string(get_component_latency((enode->Name), DATA_SIZE, serial_number));
-            
-            name += ", II=1";
+            if (enode->Instr && enode->Instr->getOpcode() == Instruction::GetElementPtr)
+                name += ", constants=" + to_string(enode->JustCntrlPreds->size());
+            if (enode->Instr && enode->Instr->getOpcode() == Instruction::Select)
+                name += ", trueFrac=0.2";
+            name += ", delay=" + getFloatValue(get_component_delay(enode->Name, DATA_SIZE));
+
+            if (enode->latency == -1) {
+                if (isLSQport(enode))
+                    name += ", latency=" +
+                            to_string(get_component_latency(("lsq_" + enode->Name), DATA_SIZE));
+                else
+                    name +=
+                        ", latency=" + to_string(get_component_latency((enode->Name), DATA_SIZE));
+                name += ", II=1";
+            } else
+                name += ", latency=" + to_string(enode->latency) + ", II=" + to_string(enode->ii);
             break;
         case Phi_:
         case Phi_n:
             name += ", delay=";
             if (enode->CntrlPreds->size() == 1)
-                name += getFloatValue(get_component_delay(ZDC_NAME, DATA_SIZE, serial_number));
+                name += getFloatValue(get_component_delay(ZDC_NAME, DATA_SIZE));
             else
-                name += getFloatValue(get_component_delay(enode->Name, DATA_SIZE, serial_number));
+                name += getFloatValue(get_component_delay(enode->Name, DATA_SIZE));
             break;
         case Phi_c:
-            name += ", delay=" + getFloatValue(get_component_delay(enode->Name, DATA_SIZE, serial_number));
+            name += ", delay=" + getFloatValue(get_component_delay(enode->Name, DATA_SIZE));
             break;
         case Cst_:
             name += ", value = \"0x" + getHexValue(getConstantValue(enode)) + "\"";
@@ -1225,10 +886,10 @@ std::string getLSQJsonParams(ENode* memnode) {
         numSt += to_string(st_count);
         numSt += count == (memnode->JustCntrlPreds->size() - 1) ? "" : "; ";
 
-        ldOff += (ldOff.find_last_of("{") == ldOff.find_first_of("{")) ? "{" : ";{";     
-        stOff += (stOff.find_last_of("{") == stOff.find_first_of("{")) ? "{" : ";{";  
-        ldPts += (ldPts.find_last_of("{") == ldPts.find_first_of("{")) ? "{" : ";{";  
-        stPts += (stPts.find_last_of("{") == stPts.find_first_of("{")) ? "{" : ";{";  
+        ldOff += (ldOff.find_last_of("{") == ldOff.find_first_of("{")) ? "{" : ";{";
+        stOff += (stOff.find_last_of("{") == stOff.find_first_of("{")) ? "{" : ";{";
+        ldPts += (ldPts.find_last_of("{") == ldPts.find_first_of("{")) ? "{" : ";{";
+        stPts += (stPts.find_last_of("{") == stPts.find_first_of("{")) ? "{" : ";{";
 
         for (auto& node : *memnode->CntrlPreds) {
 
@@ -1291,7 +952,7 @@ std::string getNodeDotMemParams(ENode* enode) {
     int ldcount = getMemLoadCount(enode);
     int stcount = getMemStoreCount(enode);
     if (enode->type == MC_ && enode->lsqToMC) {
-        ldcount++; 
+        ldcount++;
         stcount++;
     }
 
@@ -1303,7 +964,7 @@ std::string getNodeDotMemParams(ENode* enode) {
     return name;
 }
 
-void printDotNodes(std::vector<ENode*>* enode_dag, bool full, std::string serial_number) {
+void printDotNodes(std::vector<ENode*>* enode_dag, bool full) {
 
     for (auto& enode : *enode_dag) {
         if (!skipNodePrint(enode)) {
@@ -1324,7 +985,7 @@ void printDotNodes(std::vector<ENode*>* enode_dag, bool full, std::string serial
 
                 dotline += getNodeDotInputs(enode);
                 dotline += getNodeDotOutputs(enode);
-                dotline += getNodeDotParams(enode, serial_number);
+                dotline += getNodeDotParams(enode);
                 if (enode->type == MC_ || enode->type == LSQ_)
                     dotline += getNodeDotMemParams(enode);
 
@@ -1342,41 +1003,6 @@ std::string printEdge(ENode* from, ENode* to) {
     s += " -> ";
     s += getNodeDotNameNew(to);
     return s;
-}
-std::string printEdgeWidth(const ENode* from, const ENode* to) {
-    // printEdgeWidth may be called when sizes are not computed yet,
-    //in which case we print nothing
-    if (from->sizes_succs.empty() && to->sizes_preds.empty())
-        return "";
-
-    int idxSuccInFrom = getSuccIdxInPred(to, from);
-    unsigned size_from = from->sizes_succs.at(idxSuccInFrom);
-    assert(idxSuccInFrom != -1);
-    
-    int idxPredInTo = getPredIdxInSucc(from, to);
-    unsigned size_to = to->sizes_preds.at(idxPredInTo);
-    assert(idxPredInTo != -1);
-
-    std::string label = ", label=\"";
-    if (size_from == size_to)
-        label += to_string(size_from);
-    // conflict in sizes ? print it
-    // else {
-    //     label += "from:" + to_string(size_from) 
-    //         + ",to:" + to_string(size_to);
-    
-    //     label += "\\nfrom=" + from->Name + "(type=" + to_string(from->type)
-    //         + "), to=" + to->Name + "(type=" + to_string(to->type) + ")";
-    //     label += "\\nfrom_succ=" + (idxSuccInFrom < from->CntrlSuccs->size() ? 
-    //         from->CntrlSuccs->at(idxSuccInFrom) : 
-    //         from->JustCntrlSuccs->at(idxSuccInFrom - from->CntrlSuccs->size()))->Name;
-    //     label += "\\nto_pred=" + (idxPredInTo < to->CntrlPreds->size() ? 
-    //         to->CntrlPreds->at(idxPredInTo) : 
-    //         to->JustCntrlPreds->at(idxPredInTo - to->CntrlPreds->size()))->Name;
-    // }
-
-    label += '"';
-    return label;
 }
 
 std::string printColor(ENode* from, ENode* to) {
@@ -1442,7 +1068,7 @@ std::string printMemEdges(std::vector<ENode*>* enode_dag) {
                 }
             }
         }
-        if (enode->type == MC_ ) {
+        if (enode->type == MC_) {
             for (auto& pred : *(enode->CntrlPreds)) {
                 if (pred->type == LSQ_) {
                     memstr += printEdge(pred, enode);
@@ -1482,7 +1108,7 @@ std::string printMemEdges(std::vector<ENode*>* enode_dag) {
 
         auto* I = enode->Instr;
         // enode->memPort = false;
-        if ((isa<LoadInst>(I) || isa<StoreInst>(I)) && enode->memPort) {
+        if (I && (isa<LoadInst>(I) || isa<StoreInst>(I)) && enode->memPort) {
             int mcidx;
             auto* MEnode = (ENode*)enode->Mem;
 
@@ -1521,8 +1147,28 @@ std::string printMemEdges(std::vector<ENode*>* enode_dag) {
     return memstr;
 }
 
+static bool hasCstBr(ENode* enode) {
+    for (auto pred : *enode->CntrlPreds) {
+        if ((pred->type == Branch_ && !pred->Instr) ||
+            (pred->type == Fork_ && pred->CntrlPreds->at(0)->type == Branch_ &&
+             !pred->CntrlPreds->at(0)->Instr))
+            return true;
+        if (pred->type == Branch_ && pred->Instr)
+            if (auto br = dyn_cast<BranchInst>(pred->Instr))
+                if (!br->isConditional())
+                    return true;
+        if (pred->type == Fork_ && pred->CntrlPreds->at(0)->type == Branch_ &&
+            pred->CntrlPreds->at(0)->Instr)
+            if (auto br = dyn_cast<BranchInst>(pred->CntrlPreds->at(0)->Instr))
+                if (!br->isConditional())
+                    return true;
+    }
+    return false;
+}
+
 std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNode*>* bbnode_dag) {
     string str = "";
+    std::map<ENode*, int> outCounter, inCounter;
 
     int count = 0;
 
@@ -1560,7 +1206,6 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                                 str += printColor(enode, enode_succ);
                                 str += ", from = \"out" + to_string(enode_index) + "\"";
                                 str += ", to = \"in1\""; // data Branch or Fork input
-                                str += printEdgeWidth(enode, enode_succ);
                                 str += "];\n";
                             }
                             if (enode_succ->JustCntrlSuccs->size() > 0) {
@@ -1579,35 +1224,43 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                                 str += printColor(enode, enode_succ);
                                 str += ", from = \"out" + to_string(enode_index) + "\"";
                                 str += ", to = \"in2\""; /// Branch condition
-                                str += printEdgeWidth(enode, enode_succ);
                                 str += "];\n";
                             }
                         } else if (enode->type == Branch_ &&
                                    enode_succ->type ==
                                        Fork_) { // redundant Branch nodes--do not print
 
-                            llvm::BranchInst* BI =
-                                dyn_cast<llvm::BranchInst>(enode->Instr); // determine successor BBs
-
-                            if (BI->isUnconditional()) {
-                                unconditional = true;
-                            } else {
-                                branchSucc1 = BI->getSuccessor(1); // successor for condition false
-                            }
-                            if (enode->JustCntrlPreds->size() == 1) { // connected to ctrl fork
-
+                            // Jianyi 08072021: This is added for the dummy control branch for fast
+                            // path in if statement
+                            if (!enode->Instr) {
                                 str += printEdge(enode, enode_succ);
                                 str += " [";
                                 str += printColor(enode, enode_succ);
-                                str += ", from = \"out1\"";
+                                str += ", from = \"out1\", to = \"in1\"];\n";
+                            } else {
+                                llvm::BranchInst* BI = dyn_cast<llvm::BranchInst>(
+                                    enode->Instr); // determine successor BBs
 
-                                if (enode_succ->type == Fork_)
-                                    str += ", to = \"in1\"";
-                                else if (enode_succ->type == Branch_)
-                                    str += ", to = \"in2\"";
+                                if (BI->isUnconditional()) {
+                                    unconditional = true;
+                                } else {
+                                    branchSucc1 =
+                                        BI->getSuccessor(1); // successor for condition false
+                                }
+                                if (enode->JustCntrlPreds->size() == 1) { // connected to ctrl fork
 
-                                str += printEdgeWidth(enode, enode_succ);
-                                str += "];\n";
+                                    str += printEdge(enode, enode_succ);
+                                    str += " [";
+                                    str += printColor(enode, enode_succ);
+                                    str += ", from = \"out1\"";
+
+                                    if (enode_succ->type == Fork_)
+                                        str += ", to = \"in1\"";
+                                    else if (enode_succ->type == Branch_)
+                                        str += ", to = \"in2\"";
+
+                                    str += "];\n";
+                                }
                             }
                         } else {
                             str += printEdge(enode, enode_succ);
@@ -1617,22 +1270,48 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                             str += ", from = \"out" +
                                    (enode->isCntrlMg ? "2" : to_string(enode_index)) + "\"";
 
-                            if (enode->type == Fork_ &&
-                                enode->CntrlPreds->front()->type == Branch_) { // Branch condition
-                                str += ", to = \"in2\"";
+                            if (enode->type == Branch_ ||
+                                (enode->type == Fork_ &&
+                                 enode->CntrlPreds->front()->type == Branch_)) { // Branch condition
+
+                                if (enode_succ->type == Branch_n &&
+                                    enode_succ->CntrlPreds->size() == 2) {
+                                    auto in0 = enode_succ->CntrlPreds->at(0);
+                                    if (in0->type == Fork_ || in0->type == Fork_c)
+                                        in0 = in0->CntrlPreds->at(0);
+                                    auto in1 = enode_succ->CntrlPreds->at(1);
+                                    if (in1->type == Fork_ || in1->type == Fork_c)
+                                        in1 = in1->CntrlPreds->at(0);
+                                    assert(in0->type == Branch_ || in1->type == Branch_);
+                                    if (in0->type == Branch_ && in1->type == Branch_ &&
+                                        enode->Instr)
+                                        str += ", to = \"in1\"";
+                                    else
+                                        str += ", to = \"in2\"";
+                                } else if (enode_succ->CntrlPreds->size() == 1 &&
+                                           enode_succ->type != Branch_c)
+                                    str += ", to = \"in1\"";
+                                else
+                                    str += ", to = \"in2\"";
 
                             } else if (enode->isCntrlMg ||
-                                       enode->type == Fork_ &&
-                                           enode->CntrlPreds->front()->isCntrlMg) {
+                                       (enode->type == Fork_ &&
+                                        enode->CntrlPreds->front()->isCntrlMg)) {
+                                // int toIndex;
+                                // if (!inCounter.count(enode)) {
+                                //     toIndex          = 1;
+                                //     inCounter[enode] = 1;
+                                // } else
+                                //     toIndex = ++inCounter[enode];
+                                // str += ", to = \"in" + std::to_string(toIndex) + "\"";
                                 str += ", to = \"in1\"";
 
                             } else { // every other enode except branch, check successor
 
                                 if (enode_succ->type == Inst_) {
 
-                                    if (contains(pastSuccs,
-                                                 enode_succ)) { // when fork has multiple
-                                                                // connections to same node
+                                    if (contains(pastSuccs, enode_succ)) { // when fork has multiple
+                                        // connections to same node
                                         int count = 1;
                                         for (auto& past : *pastSuccs)
                                             if (past == enode_succ)
@@ -1659,16 +1338,17 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                                     toInd = (enode_succ->type == End_)
                                                 ? enode_succ->JustCntrlPreds->size() + toInd
                                                 : toInd;
+                                    // Jianyi 15112021: Added offset of 1 for DASS components
+                                    toInd = (toInd > 0) ? toInd : 1;
                                     str += ", to = \"in" + to_string(toInd) + "\"";
                                 }
                             }
-                            str += printEdgeWidth(enode, enode_succ);
                             str += "];\n";
                         }
                         enode_index++;
                     }
                     pastSuccs->push_back(enode_succ);
-                    //enode_index++;
+                    // enode_index++;
                 }
 
                 for (auto& enode_csucc : *(enode->JustCntrlSuccs)) {
@@ -1686,11 +1366,11 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
 
                         int toInd = (enode->type == Fork_ || enode->type == Branch_) ? 2 : 1;
                         if (enode->type == Cst_ && enode_csucc->type == Inst_) {
-                            assert (enode_csucc->Instr->getOpcode() == Instruction::GetElementPtr);
-                            toInd = indexOf(enode_csucc->JustCntrlPreds, enode) + enode_csucc->CntrlPreds->size() + 1;
+                            assert(enode_csucc->Instr->getOpcode() == Instruction::GetElementPtr);
+                            toInd = indexOf(enode_csucc->JustCntrlPreds, enode) +
+                                    enode_csucc->CntrlPreds->size() + 1;
                         }
                         str += ", to = \"in" + to_string(toInd) + "\"";
-                        str += printEdgeWidth(enode, enode_csucc);
                         str += "];\n";
                     }
 
@@ -1700,8 +1380,8 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                         str += printColor(enode, enode_csucc);
                         str += ", from = \"out" + to_string(enode_index) + "\"";
                         int toInd = indexOf(enode_csucc->JustCntrlPreds, enode) + 1;
+                        toInd     = (toInd) ? toInd : 1;
                         str += ", to = \"in" + to_string(toInd) + "\"";
-                        str += printEdgeWidth(enode, enode_csucc);
                         str += "];\n";
                     }
 
@@ -1714,8 +1394,9 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
 
         for (auto& enode : *enode_dag) {
             if (enode->BB == bnd->BB) {
+                int outidx = 0;
                 for (auto& enode_succ : *(enode->CntrlSuccs)) {
-
+                    outidx++;
                     if (enode->type == Branch_n && enode_succ->type != Branch_ &&
                         enode_succ->type != Branch_n) {
                         str += printEdge(enode, enode_succ);
@@ -1726,45 +1407,101 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
 
                         if (enode_succ->isMux &&
                             (enode_succ->type == Phi_ || enode_succ->type == Phi_n)) {
+                            // Jianyi 030322: Added succ block correction
+                            // Caused by short cut of variables - branchSucc1 no longer valid
+                            auto brsucc = enode->trueBB;
+                            if (enode->CntrlSuccs->at(0)->BB != brsucc &&
+                                enode->CntrlSuccs->at(1)->BB != brsucc) {
+                                llvm::errs()
+                                    << getNodeDotNameNew(enode) << " at " << enode->BB->getName()
+                                    << "\nexpected: " << brsucc->getName()
+                                    << "\ntrue: " << enode->CntrlSuccs->at(0)->BB->getName()
+                                    << "\nfalse: " << enode->CntrlSuccs->at(1)->BB << "\n";
+                                llvm_unreachable("Cannot find the expected successor BB.");
+                            }
+
                             int fromInd;
-                            if (unconditional)
+                            if (unconditional || hasCstBr(enode))
                                 fromInd = 1;
                             else
-                                fromInd = enode_succ->BB == branchSucc1 ? 2 : 1;
+                                fromInd = enode_succ->BB == brsucc ? 1 : 2;
+
+                            // Jianyi 110721: This is a temporary fix for the control branch
+                            // forwarding
+                            toInd = (toInd == enode_succ->CntrlPreds->size()) ? 0 : toInd;
 
                             str += ", from = \"out" + to_string(fromInd) + "\"";
                             str += ", to = \"in" + to_string(toInd + 1) + "\"";
                         } else if (enode_succ->type != Sink_) {
+                            // Jianyi 030322: Added succ block correction
+                            // Caused by short cut of variables - branchSucc1 no longer valid
+                            auto brsucc = enode->trueBB;
+                            if (enode->CntrlSuccs->at(0)->BB != brsucc &&
+                                enode->CntrlSuccs->at(1)->BB != brsucc) {
+                                llvm::errs()
+                                    << getNodeDotNameNew(enode) << " at " << enode->BB->getName()
+                                    << "\nexpected: " << brsucc->getName()
+                                    << "\ntrue: " << enode->CntrlSuccs->at(0)->BB->getName()
+                                    << "\nfalse: " << enode->CntrlSuccs->at(1)->BB << "\n";
+                                llvm_unreachable("Cannot find the expected successor BB.");
+                            }
+
                             int fromInd;
-                            if (unconditional)
+                            if (unconditional || hasCstBr(enode))
                                 fromInd = 1;
                             else
-                                fromInd = enode_succ->BB == branchSucc1 ? 2 : 1;
+                                fromInd = enode_succ->BB == brsucc ? 1 : 2;
+
+                            // Jianyi 030122: Added a special case where both outputs of a branch go
+                            // to the same phi - which should be optimized in the graph but this
+                            // branch-phi pair is required by the buffer tool
+                            if (enode->CntrlSuccs->at(0) == enode->CntrlSuccs->at(1)) {
+                                if (outCounter.count(enode)) {
+                                    toInd += outCounter[enode];
+                                    outCounter[enode]++;
+                                } else
+                                    outCounter[enode] = 1;
+                                fromInd = outCounter[enode];
+                            }
+
                             str += ", from = \"out" + to_string(fromInd) + "\"";
                             str += ", to = \"in" + to_string(toInd) + "\"";
 
                         } else {
+                            // Jianyi 030322: Added succ block correction
+                            // Caused by short cut of variables - branchSucc1 no longer valid
+                            auto brsucc = enode->trueBB;
+                            if (enode->CntrlSuccs->at(0)->BB != brsucc &&
+                                enode->CntrlSuccs->at(1)->BB != brsucc) {
+                                llvm::errs()
+                                    << getNodeDotNameNew(enode) << " at " << enode->BB->getName()
+                                    << "\nexpected: " << brsucc->getName()
+                                    << "\ntrue: " << enode->CntrlSuccs->at(0)->BB->getName()
+                                    << "\nfalse: " << enode->CntrlSuccs->at(1)->BB << "\n";
+                                llvm_unreachable("Cannot find the expected successor BB.");
+                            }
+
                             int fromInd;
-                            if (unconditional)
+                            if (unconditional || hasCstBr(enode))
                                 fromInd = 2;
                             else {
                                 for (auto& succ : *(enode->CntrlSuccs)) {
                                     if (succ != enode_succ) {
-                                        fromInd = succ->BB == branchSucc1 ? 1 : 2;
+                                        fromInd = succ->BB == brsucc ? 2 : 1;
                                         break;
                                     }
                                 }
                             }
+
                             str += ", from = \"out" + to_string(fromInd) + "\"";
                             str += ", to = \"in" + to_string(toInd) + "\"";
                         }
-                        str += printEdgeWidth(enode, enode_succ);
                         str += "];\n";
                     }
                 }
 
                 for (auto& enode_csucc : *(enode->JustCntrlSuccs)) {
-                    if (enode->type == Branch_c && enode->BB != NULL) {
+                    if (enode->type == Branch_c && enode->BB) {
                         str += printEdge(enode, enode_csucc);
                         str += " [";
                         str += printColor(enode, enode_csucc);
@@ -1774,19 +1511,18 @@ std::string printDataflowEdges(std::vector<ENode*>* enode_dag, std::vector<BBNod
                         int fromInd;
 
                         if (enode_csucc->type != Sink_) {
-                            if (unconditional)
+                            if (unconditional || hasCstBr(enode))
                                 fromInd = 1;
                             else
                                 fromInd = enode_csucc->BB == branchSucc1 ? 2 : 1;
                         } else {
-                            if (unconditional)
+                            if (unconditional || hasCstBr(enode))
                                 fromInd = 2;
                             else
                                 fromInd = enode_csucc->BB == branchSucc1 ? 1 : 2;
                         }
                         str += ", from = \"out" + to_string(fromInd) + "\"";
                         str += ", to = \"in" + to_string(toInd) + "\"";
-                        str += printEdgeWidth(enode, enode_csucc);
                         str += "];\n";
                     }
                 }
@@ -1804,7 +1540,7 @@ void printDotEdges(std::vector<ENode*>* enode_dag, std::vector<BBNode*>* bbnode_
     dotfile << printDataflowEdges(enode_dag, bbnode_dag);
 }
 void printDotDFG(std::vector<ENode*>* enode_dag, std::vector<BBNode*>* bbnode_dag, std::string name,
-                 bool full, std::string serial_number) {
+                 bool full) {
 
     std::string output_filename = name;
 
@@ -1823,7 +1559,7 @@ void printDotDFG(std::vector<ENode*>* enode_dag, std::vector<BBNode*>* bbnode_da
 
     dotfile << infoStr;
 
-    printDotNodes(enode_dag, full, serial_number);
+    printDotNodes(enode_dag, full);
 
     printDotEdges(enode_dag, bbnode_dag, full);
 

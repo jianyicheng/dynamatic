@@ -1,7 +1,7 @@
-CLANG = ../../llvm/build/bin/clang # change depending on where your installation of clang is
-OPT = ../../llvm/build/bin/opt # change depending on where your installation of opt is
-BUILDDIR = build
-BUILDDIR_FILE = build/$(name)
+CLANG = ../../../llvm/build/bin/clang # change depending on where your installation of clang is
+OPT = ../../../llvm/build/bin/opt # change depending on where your installation of opt is
+BUILDDIR = _build
+BUILDDIR_FILE = _build/$(name)
 
 OPTIMIZATON_LEVEL = #O1, O2, O3
 OPTIMIZATION_FLAGS = #-fno-builtin, -fno-vectorize
@@ -30,7 +30,7 @@ test_f: $(BUILDDIR)
 
 	#-$(OPT) -load ../build/MemElemInfo/libLLVMMemElemInfo.so -load ../build/ElasticPass/libElasticPass.so -load ../build/OptimizeBitwidth/libLLVMOptimizeBitWidth.so -load ../build/MyCFGPass/libMyCFGPass.so -polly-process-unprofitable -mycfgpass  $(BUILDDIR_FILE)/$(name)_mem2reg_constprop_simplifycfg_die.ll -S -use-lsq=false -simple-buffers=true
 
-	-$(OPT) -load ../build/MemElemInfo/libLLVMMemElemInfo.so -load ../build/ElasticPass/libElasticPass.so -load ../build/OptimizeBitwidth/libLLVMOptimizeBitWidth.so -load ../build/MyCFGPass/libMyCFGPass.so -polly-process-unprofitable -mycfgpass  $(BUILDDIR_FILE)/$(name)_mem2reg_constprop_simplifycfg_die.ll -S -use-lsq=false 
+	-$(OPT) -load ../build/MemElemInfo/libLLVMMemElemInfo.so -load ../build/ElasticPass/libElasticPass.so -load ../build/OptimizeBitwidth/libLLVMOptimizeBitWidth.so -load ../build/MyCFGPass/libMyCFGPass.so -polly-process-unprofitable -mycfgpass  $(BUILDDIR_FILE)/$(name)_mem2reg_constprop_simplifycfg_die.ll -S -use-lsq=false -cfg-outdir=$(BUILDDIR_FILE)/$(name)
 
 	#-$(OPT) -load ../build/MemElemInfo/libLLVMMemElemInfo.so -load ../build/ElasticPass/libElasticPass.so -load ../build/OptimizeBitwidth/libLLVMOptimizeBitWidth.so -load ../build/MyCFGPass/libMyCFGPass.so -polly-process-unprofitable -mycfgpass  $(BUILDDIR_FILE)/$(name)_mem2reg_constprop_simplifycfg_die.ll -S
 	rm *_freq.txt mapping.txt
@@ -56,7 +56,7 @@ graph_f: test_f
 test: $(BUILDDIR)
 	mkdir -p $(BUILDDIR_FILE)
 	-rm -rf $(BUILDDIR_FILE)/*.dot
-	$(CLANG) -Xclang -disable-O0-optnone -emit-llvm -S $(OPTIMIZATION_LEVEL) $(OPTIMIZATION_FLAGS) -c $(name).cpp -o $(BUILDDIR_FILE)/$(name).ll
+	$(CLANG) -Xclang -disable-O0-optnone -emit-llvm -S $(OPTIMIZATION_LEVEL) $(OPTIMIZATION_FLAGS)-c $(name).cpp -o $(BUILDDIR_FILE)/$(name).ll
 	$(OPT) -mem2reg  $(BUILDDIR_FILE)/$(name).ll -S -o $(BUILDDIR_FILE)/$(name)_mem2reg.ll
 	$(OPT) -loop-rotate -constprop  $(BUILDDIR_FILE)/$(name)_mem2reg.ll -S -o $(BUILDDIR_FILE)/$(name)_mem2reg_constprop.ll
 	$(OPT) -simplifycfg $(BUILDDIR_FILE)/$(name)_mem2reg_constprop.ll -S -o $(BUILDDIR_FILE)/$(name)_mem2reg_constprop_simplifycfg.ll

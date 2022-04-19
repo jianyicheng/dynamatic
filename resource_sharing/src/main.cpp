@@ -5,7 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include "Dataflow.h"
+#include <DFnetlist/Dataflow.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>

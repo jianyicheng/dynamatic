@@ -10,6 +10,12 @@ set(libsrc
     Memory.cpp 
     PrintDot.cpp
     Bitwidth.cpp
+
+    DASSOptimizations/OptimizePointersForIO.cpp
+    DASSOptimizations/OptimizeCF.cpp
+    DASSOptimizations/DASSUtils.cpp
+    DASSOptimizations/AddControlForCall.cpp
+    DASSOptimizations/ShiftBlockID.cpp
 )
 
 add_library(ElasticPass MODULE ${libsrc})

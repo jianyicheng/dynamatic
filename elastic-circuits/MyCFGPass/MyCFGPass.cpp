@@ -20,10 +20,11 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #include "ElasticPass/CircuitGenerator.h"
-#include "ElasticPass/Utils.h"
 #include "ElasticPass/Head.h"
 #include "ElasticPass/Nodes.h"
 #include "ElasticPass/Pragmas.h"
+#include "ElasticPass/Utils.h"
+#include "MyCFGPass/MyCFGPass.h"
 #include "OptimizeBitwidth/OptimizeBitwidth.h"
 
 #include <sys/time.h>
@@ -36,10 +37,17 @@ static cl::opt<std::string> opt_cfgOutdir("cfg-outdir", cl::desc("Output directo
                                           cl::Hidden, cl::init("."), cl::Optional);
 
 static cl::opt<bool> opt_buffers("simple-buffers", cl::desc("Naive buffer placement"), cl::Hidden,
-                                cl::init(false), cl::Optional);
+                                 cl::init(false), cl::Optional);
 
-static cl::opt<std::string> opt_serialNumber("target", cl::desc("Targeted FPGA"), cl::Hidden,
-                                cl::init("default"), cl::Optional);
+//--------------------------------------------------------//
+// Added for DASS compiler, by Jianyi
+static cl::opt<bool> opt_ptrToReg("ptr2reg", cl::desc("Replace pointers to registers"), cl::Hidden,
+                                  cl::init(true), cl::Optional);
+static cl::opt<bool> opt_exportDot("export-dot", cl::desc("Export dot graph"), cl::Hidden,
+                                   cl::init(false), cl::Optional);
+static cl::opt<bool> opt_optIf("if-conversion", cl::desc("Optimize if statements"), cl::Hidden,
+                               cl::init(false), cl::Optional);
+//--------------------------------------------------------//
 
 struct timeval start, end;
 
@@ -56,125 +64,141 @@ double elapsed_time() {
     return elapsed;
 }
 
-using namespace llvm;
+void MyCFGPass::getAnalysisUsage(AnalysisUsage& AU) const {
+    // 			  AU.setPreservesCFG();
+    AU.addRequired<OptimizeBitwidth>();
+    AU.addRequired<MemElemInfoPass>();
+}
 
-namespace {
-class MyCFGPass : public llvm::FunctionPass {
+void MyCFGPass::compileAndProduceDOTFile(Function& F) {
+    fname = demangleFuncName(F.getName().str().c_str());
 
-public:
-    static char ID;
+    // main is used for frequency extraction, we do not use its dataflow graph
+    if (fname == "main")
+        return;
 
-    MyCFGPass() : llvm::FunctionPass(ID) {}
+    bool done = false;
 
-    virtual void getAnalysisUsage(AnalysisUsage& AU) const {
-        // 			  AU.setPreservesCFG();
-        AU.addRequired<OptimizeBitwidth>();
-        OptimizeBitwidth::setEnabled(true); // enable OB
+    auto M = F.getParent();
 
-        AU.addRequired<MemElemInfoPass>();
+    pragmas(0, M->getModuleIdentifier());
+
+    bbnode_dag           = new std::vector<BBNode*>;
+    enode_dag            = new std::vector<ENode*>;
+    OptimizeBitwidth* OB = &getAnalysis<OptimizeBitwidth>();
+    MemElemInfo& MEI     = getAnalysis<MemElemInfoPass>().getInfo();
+
+    //----- Internally constructs elastic circuit and adds elastic components -----//
+
+    // Naively building circuit
+    CircuitGenerator* circuitGen = new CircuitGenerator(enode_dag, bbnode_dag, OB, MEI);
+
+    circuitGen->buildDagEnodes(F);
+
+    circuitGen->fixBuildDagEnodes();
+
+    circuitGen->formLiveBBnodes();
+
+    // Jianyi 04.01.2021: Here to add optimization for pointers: replace pointer with IO
+    // ports
+    const_val_vec pointers;
+    if (opt_ptrToReg)
+        circuitGen->replacePointersWithRegisters(F, &pointers);
+
+    circuitGen->removeRedundantBeforeElastic(bbnode_dag, enode_dag);
+
+    circuitGen->setGetelementPtrConsts(enode_dag);
+
+    circuitGen->addPhi();
+
+    // printDotDFG(enode_dag, bbnode_dag, opt_cfgOutdir + "/_build/" + fname + "/" + fname + ".dot",
+    //             done);
+
+    circuitGen->phiSanityCheck(enode_dag);
+
+    circuitGen->addFork();
+
+    // Jianyi 04.01.2021: Here to add optimization for pointers: merge call net into a call
+    // op
+    if (opt_ptrToReg)
+        circuitGen->mergeCallTail(&pointers);
+
+    circuitGen->forkSanityCheck(enode_dag);
+
+    circuitGen->addBranch();
+
+    circuitGen->branchSanityCheck(enode_dag);
+
+    if (get_pragma_generic("USE_CONTROL")) {
+        circuitGen->addControl();
     }
 
-    void compileAndProduceDOTFile(Function& F) {
-        fname = F.getName().str();
+    circuitGen->addMemoryInterfaces(opt_useLSQ);
+    circuitGen->addControl();
 
-        // main is used for frequency extraction, we do not use its dataflow graph
-        if (fname != "main") {
+    circuitGen->addSink();
+    circuitGen->addSource();
 
-            bool done = false;
+    // circuitGen->setSizes();
 
-            auto M = F.getParent();
+    set_clock();
+    if (opt_buffers)
+        circuitGen->addBuffersSimple();
 
-            pragmas(0, M->getModuleIdentifier());
+    printf("Time elapsed: %.4gs.\n", elapsed_time());
+    fflush(stdout);
 
-            std::vector<BBNode*>* bbnode_dag = new std::vector<BBNode*>;
-            std::vector<ENode*>* enode_dag   = new std::vector<ENode*>;
-            OptimizeBitwidth* OB             = &getAnalysis<OptimizeBitwidth>();
-            MemElemInfo& MEI                 = getAnalysis<MemElemInfoPass>().getInfo();
+    std::string dbgInfo("a");
 
-            //----- Internally constructs elastic circuit and adds elastic components -----//
+    circuitGen->setMuxes();
 
-            // Naively building circuit
-            CircuitGenerator* circuitGen = new CircuitGenerator(enode_dag, bbnode_dag, OB, MEI);
+    circuitGen->setBBIds();
 
-            circuitGen->buildDagEnodes(F);
+    circuitGen->setFreqs(F.getName());
 
-            circuitGen->fixBuildDagEnodes();
+    circuitGen->removeRedundantAfterElastic(enode_dag);
 
-            circuitGen->formLiveBBnodes();
+    done = true;
 
-            circuitGen->removeRedundantBeforeElastic(bbnode_dag, enode_dag);
+    fflush(stdout);
 
-            circuitGen->setGetelementPtrConsts(enode_dag);
+    circuitGen->sanityCheckVanilla(enode_dag);
 
-            circuitGen->addPhi();
+    // Jianyi 03.03.2022: Here to add branch successor BBs for backend printing
+    circuitGen->addBranchConstraints(&F);
 
-            printDotDFG(enode_dag, bbnode_dag, opt_cfgOutdir + "/" + fname + "_graph.dot", done, opt_serialNumber);
+    // Jianyi 15.06.2021: Here to add elastic triggers for calls without input edges
+    circuitGen->addControlForCall();
 
-            circuitGen->phiSanityCheck(enode_dag);
-
-            circuitGen->addFork();
-
-            circuitGen->forkSanityCheck(enode_dag);
-
-            circuitGen->addBranch();
-
-            circuitGen->branchSanityCheck(enode_dag);
-
-            if (get_pragma_generic("USE_CONTROL")) {
-                circuitGen->addControl();
-            }
-
-            circuitGen->addMemoryInterfaces(opt_useLSQ);
-            circuitGen->addControl();
-
-            circuitGen->addSink();
-            circuitGen->addSource();
-
-            set_clock();
-            if (opt_buffers)
-              circuitGen->addBuffersSimple();
-
-            printf("Time elapsed: %.4gs.\n", elapsed_time());
-            fflush(stdout);
-
-            Instruction* instr;
-            for (auto& enode : *enode_dag) {
-                if (enode->Instr != NULL) {
-                    instr = enode->Instr;
-                    break;
-                }
-            }
-
-            std::string dbgInfo("a");
-
-            circuitGen->setMuxes();
-
-            circuitGen->setBBIds();
-
-            circuitGen->setFreqs(F.getName());
-
-            circuitGen->removeRedundantAfterElastic(enode_dag);
-            
-            if (OptimizeBitwidth::isEnabled())
-                circuitGen->setSizes();
-
-            done = true;
-
-            fflush(stdout);
-
-            printDotDFG(enode_dag, bbnode_dag, opt_cfgOutdir + "/" + fname + "_graph.dot", done, opt_serialNumber);
-
-            printDotCFG(bbnode_dag, (opt_cfgOutdir + "/" + fname + "_bbgraph.dot").c_str());
-
-            circuitGen->sanityCheckVanilla(enode_dag);
-        }
+    // Jianyi 08.07.2021: Here to optimize the if statement so independent variables are not stalled
+    // by the if condition
+    if (opt_optIf) {
+        circuitGen->optimizeIfStmt(&F);
+        circuitGen->removeRedundantAfterElastic(enode_dag);
     }
 
-    bool runOnFunction(Function& F) override { this->compileAndProduceDOTFile(F); }
+    // Jianyi 10.10.2021: Here to optimize the loops so loop invariants are directly forwarded to
+    // the next basic block instead of going through basic blocks with the control path
+    circuitGen->optimizeLoops(&F);
+    circuitGen->removeRedundantAfterElastic(enode_dag);
 
-    void print(llvm::raw_ostream& OS, const Module* M) const override {}
-};
-} // namespace
+    // Jianyi 15.10.2021: Here to insert the loop interchangers
+    circuitGen->insertLoopInterchangers(&F);
+
+    // Jianyi 1.1.2022: Here to parallelise loops
+    circuitGen->paralleliseLoops(&F);
+
+    // Jianyi 07.01.2021: Here to shift blocks to ones starting from 1
+    circuitGen->shiftBlockID();
+
+    // Jianyi 03.01.2022: Add name check which may cause error in output dataflow graph
+    assert(!nodeNameCheck(enode_dag));
+
+    if (opt_exportDot) {
+        printDotDFG(enode_dag, bbnode_dag, opt_cfgOutdir + "/" + fname + ".dot", done);
+        printDotCFG(bbnode_dag, (opt_cfgOutdir + "/" + fname + "_bbgraph.dot").c_str());
+    }
+}
 
 char MyCFGPass::ID = 1;
 
@@ -198,11 +222,7 @@ bool fileExists(const char* fileName) {
     FILE* file = NULL;
     if ((file = fopen(fileName, "r")) != NULL) {
         fclose(file);
-
         return true;
-
-    } else {
-
+    } else
         return false;
-    }
 }

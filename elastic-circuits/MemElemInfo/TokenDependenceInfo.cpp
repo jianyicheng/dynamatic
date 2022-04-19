@@ -30,7 +30,7 @@ bool tokenDepends(const Path& P, const Instruction* I_A, const std::set<Loop*>& 
     std::set<const Value*> ActiveVals = P.Vals.at(CurBB);
     std::map<const BasicBlock*, std::set<const Value*>> phiDepends;
 
-    DEBUG(dbgs().indent(len * 4) << CurBB->getName() << "\n");
+    LLVM_DEBUG(dbgs().indent(len * 4) << CurBB->getName() << "\n");
 
     /// Determine active values of the current basic block
     /// For each instruction in the current basic block, determine whether it
@@ -107,7 +107,7 @@ bool tokenDepends(const Path& P, const Instruction* I_A, const std::set<Loop*>& 
         }
     }
 
-    DEBUG(dbgs().indent(len * 4) << depends << "\n");
+    LLVM_DEBUG(dbgs().indent(len * 4) << depends << "\n");
     return depends;
 }
 
@@ -117,7 +117,7 @@ static bool tokenRevDepends(Path P, const Instruction* I_A, const std::set<Loop*
     const BasicBlock* PredBB = (len > 1) ? P.Blocks[len - 2] : nullptr;
     auto ActiveVals          = P.Vals[CurBB];
 
-    DEBUG(dbgs().indent(len * 4) << CurBB->getName() << "\n");
+    LLVM_DEBUG(dbgs().indent(len * 4) << CurBB->getName() << "\n");
     /// Determine active values of the current basic block
     /// For each instruction in the current basic block, its operands are
     /// checked to see whether they are present in the current set of active
@@ -175,7 +175,7 @@ static bool tokenRevDepends(Path P, const Instruction* I_A, const std::set<Loop*
             depends &= tokenRevDepends(succBBPath, I_A, LS);
         }
     }
-    DEBUG(dbgs().indent(len * 4) << depends << "\n");
+    LLVM_DEBUG(dbgs().indent(len * 4) << depends << "\n");
     return depends;
 }
 
@@ -192,7 +192,7 @@ bool TokenDependenceInfo::hasTokenDependence(const Instruction* I_B, const Instr
     for (Loop* L = LI.getLoopFor(I_B->getParent()); L != nullptr; L = L->getParentLoop())
         LS.insert(L);
 
-    DEBUG(dbgs() << "I_B = " << *I_B << " depends " << *I_A << " ? \n");
+    LLVM_DEBUG(dbgs() << "I_B = " << *I_B << " depends " << *I_A << " ? \n");
     return tokenDepends(P, I_A, LS);
 }
 
@@ -206,7 +206,7 @@ bool TokenDependenceInfo::hasRevTokenDependence(const Instruction* I_A, const In
     for (Loop* L = LI.getLoopFor(I_B->getParent()); L != nullptr; L = L->getParentLoop())
         LS.insert(L);
 
-    DEBUG(dbgs() << "I_A = " << *I_A << " revdeps " << *I_B << " ? \n");
+    LLVM_DEBUG(dbgs() << "I_A = " << *I_A << " revdeps " << *I_B << " ? \n");
     return tokenRevDepends(P, I_B, LS);
 }
 

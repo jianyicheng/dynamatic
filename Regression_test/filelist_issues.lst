@@ -1,0 +1,19 @@
+examples/atax : Problems same identifier LSQ ans MC
+examples/if_loop_4 : Simulation too long - Floating Point
+examples/insertion_sort : Problems same identifier LSQ ans MC
+examples/jacobi_1d_imper : problems in LSQ generation (chisel)
+examples/kernel_2mm : Problems same identifier LSQ ans MC
+examples/kernel_3mm : Problems same identifier LSQ ans MC
+examples/kmp : in_char_t doesn't supported by verifier
+examples/pivot : Problems same identifier LSQ ans MC
+examples/sobel : bitwidth mismatch between icmp_4 and and_6
+examples/sumi3 : verifier [ERROR CAnalyzer] Unable to parse parameter from string "".
+examples/test_memory_3 : problems in LSQ generation (chisel)
+examples/test_memory_7 : problems in LSQ generation (chisel)
+examples/test_memory_8 : problems in LSQ generation (chisel)
+examples/threshold : problems in LSQ generation (chisel)
+examples/triangular : Problems same identifier LSQ ans MC
+examples/trisolv : Problems same identifier LSQ ans MC
+examples/while_loop_3 : [ERROR VVER] Invalid number of transactions detected!
+examples/while_loop_5 : Floating Point
+

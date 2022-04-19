@@ -24,7 +24,6 @@
 #include "dot_parser.h"
 #include "vhdl_writer.h"
 #include "string_utils.h"
-#include "lsq_generator.h"
 
 
 string entity_name[] = {
@@ -889,9 +888,9 @@ void write_connections (  int indx )
                         {
                             signal_2 = "\"";
                             signal_2 += string_constant ( nodes[nodes[i].outputs.output[indx].next_nodes_id].component_value , nodes[nodes[i].outputs.output[indx].next_nodes_id].inputs.input[0].bit_size );
-                            signal_2 += "\"";                        
-                        netlist << "\t" << signal_1  << " <= " << signal_2 <<SEMICOLOUMN << endl;
-                    }
+                            signal_2 += "\"";               
+                            netlist << "\t" << signal_1  << " <= " << signal_2 <<SEMICOLOUMN << endl;    
+                        }
                         else
                         {
                             netlist << "\t" << signal_1 << " <= std_logic_vector (resize(unsigned(" << signal_2 << ")," << signal_1 << "'length))"<<SEMICOLOUMN << endl;
@@ -1530,7 +1529,7 @@ void write_components ( )
         }
         else if ( nodes[i].type == "LSQ" )
         {
-            entity = "c_"+nodes[i].name + ":" + nodes[i].name;
+            entity += nodes[i].name;
         }
         else
         {
@@ -1609,869 +1608,869 @@ void write_components ( )
         if ( nodes[i].type == "LSQ" || nodes[i].type == "MC" )
         {
             
-                static int load_indx = 0;
-                load_indx = 0;
-                
-                static int store_add_indx = 0;
-                static int store_data_indx = 0;
-                store_add_indx = 0;
-                store_data_indx = 0;
-                
-                for ( int lsq_indx = 0; lsq_indx < nodes[i].inputs.size; lsq_indx++ )
-                {    
-                    //cout << nodes[i].name << "LSQ input "<< lsq_indx << " = " << nodes[i].inputs.input[lsq_indx].type << " port = " << nodes[i].inputs.input[lsq_indx].port << " info_type = " <<nodes[i].inputs.input[lsq_indx].info_type << endl;     
-                }
-
-                for ( int lsq_indx = 0; lsq_indx < nodes[i].outputs.size; lsq_indx++ )
-                {    
-                    //cout << nodes[i].name << "LSQ output "<< lsq_indx << " = " << nodes[i].outputs.output[lsq_indx].type << " port = " << nodes[i].outputs.output[lsq_indx].port << " info_type = " <<nodes[i].outputs.output[lsq_indx].info_type << endl;     
-                }
-
-                netlist << "," << endl;
-                
-                if ( nodes[i].type == "LSQ" )
-                {
-                    input_signal = nodes[i].name;
-                }
-                else
-                {
-                    input_signal = nodes[i].memory;
-                }
-                input_signal += UNDERSCORE;
-                input_signal += "dout0";
-                input_signal += COMMA;
-                
-                netlist << "\t" << "io_storeDataOut" << " => "   << input_signal << endl;
-
-                if ( nodes[i].type == "LSQ" )
-                {
-                    input_signal = nodes[i].name;
-                }
-                else
-                {
-                    input_signal = nodes[i].memory;
-                }
-                input_signal += UNDERSCORE;
-                input_signal += "address0";
-                input_signal += COMMA;
-
-                netlist << "\t" << "io_storeAddrOut" << " => "  << input_signal << endl;
-                
-                input_signal = nodes[i].name;
-                input_signal += UNDERSCORE;
-                input_signal += "we0_ce0";
-                input_signal += COMMA;
-
-                netlist << "\t" << "io_storeEnable"<< " => "  << input_signal << endl;
-                
-                if ( nodes[i].type == "LSQ" )
-                {
-                    input_signal = nodes[i].name;
-                }
-                else
-                {
-                    input_signal = nodes[i].memory;
-                }
-                input_signal += UNDERSCORE;
-                input_signal += "din1";
-                input_signal += COMMA;
-
-                netlist << "\t" << "io_loadDataIn" << " => "  << input_signal << endl;
-                
-                if ( nodes[i].type == "LSQ" )
-                {
-                    input_signal = nodes[i].name;
-                }
-                else
-                {
-                    input_signal = nodes[i].memory;
-                }
-                input_signal += UNDERSCORE;
-                input_signal += "address1";
-                input_signal += COMMA;
-
-                netlist << "\t" << "io_loadAddrOut"<< " => "  << input_signal  << endl;
-                
-                if ( nodes[i].type == "LSQ" )
-                {
-                    input_signal = nodes[i].name;
-                }
-                else
-                {
-                    input_signal = nodes[i].memory;
-                }
-                input_signal += UNDERSCORE;
-                input_signal += "ce1";
-                //input_signal += COMMA;
-                
-                netlist << "\t" << "io_loadEnable" << " => "  << input_signal;
-
-                
-
-            string bbReadyPrev = "";
-            string bbValidPrev = "";
-            string bbCountPrev = "";
-            string rdReadyPrev = "";
-            string rdValidPrev = "";
-            string rdBitsPrev = "";
-            string stAdReadyPrev = "";
-            string stAdValidPrev = "";
-            string stAdBitsPrev = "";
-            string stDataReadyPrev = "";
-            string stDataValidPrev = "";
-            string stDataBitsPrev = "";
-
-            netlist << COMMA << endl;
+            static int load_indx = 0;
+            load_indx = 0;
+            
+            static int store_add_indx = 0;
+            static int store_data_indx = 0;
+            store_add_indx = 0;
+            store_data_indx = 0;
+            
             for ( int lsq_indx = 0; lsq_indx < nodes[i].inputs.size; lsq_indx++ )
             {    
-                //cout << nodes[i].name; 
-                //cout << " LSQ input "<< lsq_indx << " = " << nodes[i].inputs.input[lsq_indx].type << "port = " << nodes[i].inputs.input[lsq_indx].port << "info_type = " <<nodes[i].inputs.input[lsq_indx].info_type << endl;   
-                
-                
-                //if ( nodes[i].inputs.input[lsq_indx].type == "c" || (nodes[i].bbcount-- > 0 ) )
-                if ( nodes[i].inputs.input[lsq_indx].type == "c" )
-                {
-                    //netlist << COMMA << endl;
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "bbpValids";
-                    //input_port += UNDERSCORE;
-                    if ( nodes[i].type == "MC" )  
-                    { 
-                        input_port +="("; 
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port); 
-                        input_port +=")"; 
-                        
-                    } 
-                    else 
-                    { 
-                        input_port += UNDERSCORE; 
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port); 
-                        
-                    }
-                    
-                    if ( nodes[i].inputs.input[lsq_indx].info_type == "fake" ) //Andrea 20200128 Try to force 0 to inputs.
-                    {
-                        input_signal = "'0',";
-                    }
-                    else
-                    {
-                        input_signal = nodes[i].name;
-                        input_signal += UNDERSCORE;
-                        input_signal += PVALID_ARRAY;
-                        input_signal += UNDERSCORE;
-                        input_signal += to_string(lsq_indx);
-                        input_signal += COMMA;
-                    }
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-                    bbValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
+                //cout << nodes[i].name << "LSQ input "<< lsq_indx << " = " << nodes[i].inputs.input[lsq_indx].type << " port = " << nodes[i].inputs.input[lsq_indx].port << " info_type = " <<nodes[i].inputs.input[lsq_indx].info_type << endl;     
+            }
 
-                    
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "bbReadyToPrevs";
-                    //input_port += UNDERSCORE;
-                if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += READY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
+            for ( int lsq_indx = 0; lsq_indx < nodes[i].outputs.size; lsq_indx++ )
+            {    
+                //cout << nodes[i].name << "LSQ output "<< lsq_indx << " = " << nodes[i].outputs.output[lsq_indx].type << " port = " << nodes[i].outputs.output[lsq_indx].port << " info_type = " <<nodes[i].outputs.output[lsq_indx].info_type << endl;     
+            }
 
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-                    bbReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
+            netlist << "," << endl;
+            
+            if ( nodes[i].type == "LSQ" )
+            {
+                input_signal = nodes[i].name;
+            }
+            else
+            {
+                input_signal = nodes[i].memory;
+            }
+            input_signal += UNDERSCORE;
+            input_signal += "dout0";
+            input_signal += COMMA;
+            
+            netlist << "\t" << "io_storeDataOut" << " => "   << input_signal << endl;
 
+            if ( nodes[i].type == "LSQ" )
+            {
+                input_signal = nodes[i].name;
+            }
+            else
+            {
+                input_signal = nodes[i].memory;
+            }
+            input_signal += UNDERSCORE;
+            input_signal += "address0";
+            input_signal += COMMA;
+
+            netlist << "\t" << "io_storeAddrOut" << " => "  << input_signal << endl;
+            
+            input_signal = nodes[i].name;
+            input_signal += UNDERSCORE;
+            input_signal += "we0_ce0";
+            input_signal += COMMA;
+
+            netlist << "\t" << "io_storeEnable"<< " => "  << input_signal << endl;
+            
+            if ( nodes[i].type == "LSQ" )
+            {
+                input_signal = nodes[i].name;
+            }
+            else
+            {
+                input_signal = nodes[i].memory;
+            }
+            input_signal += UNDERSCORE;
+            input_signal += "din1";
+            input_signal += COMMA;
+
+            netlist << "\t" << "io_loadDataIn" << " => "  << input_signal << endl;
+            
+            if ( nodes[i].type == "LSQ" )
+            {
+                input_signal = nodes[i].name;
+            }
+            else
+            {
+                input_signal = nodes[i].memory;
+            }
+            input_signal += UNDERSCORE;
+            input_signal += "address1";
+            input_signal += COMMA;
+
+            netlist << "\t" << "io_loadAddrOut"<< " => "  << input_signal  << endl;
+            
+            if ( nodes[i].type == "LSQ" )
+            {
+                input_signal = nodes[i].name;
+            }
+            else
+            {
+                input_signal = nodes[i].memory;
+            }
+            input_signal += UNDERSCORE;
+            input_signal += "ce1";
+            //input_signal += COMMA;
+            
+            netlist << "\t" << "io_loadEnable" << " => "  << input_signal;
+
+            
+
+        string bbReadyPrev = "";
+        string bbValidPrev = "";
+        string bbCountPrev = "";
+        string rdReadyPrev = "";
+        string rdValidPrev = "";
+        string rdBitsPrev = "";
+        string stAdReadyPrev = "";
+        string stAdValidPrev = "";
+        string stAdBitsPrev = "";
+        string stDataReadyPrev = "";
+        string stDataValidPrev = "";
+        string stDataBitsPrev = "";
+
+        netlist << COMMA << endl;
+        for ( int lsq_indx = 0; lsq_indx < nodes[i].inputs.size; lsq_indx++ )
+        {    
+            //cout << nodes[i].name; 
+            //cout << " LSQ input "<< lsq_indx << " = " << nodes[i].inputs.input[lsq_indx].type << "port = " << nodes[i].inputs.input[lsq_indx].port << "info_type = " <<nodes[i].inputs.input[lsq_indx].info_type << endl;   
+            
+            
+            //if ( nodes[i].inputs.input[lsq_indx].type == "c" || (nodes[i].bbcount-- > 0 ) )
+            if ( nodes[i].inputs.input[lsq_indx].type == "c" )
+            {
+                //netlist << COMMA << endl;
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "bbpValids";
+                //input_port += UNDERSCORE;
+                if ( nodes[i].type == "MC" )  
+                { 
+                    input_port +="("; 
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port); 
+                    input_port +=")"; 
                     
-                    if ( nodes[i].type == "MC" )
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "bb_stCountArray";
-                        //input_port += UNDERSCORE;
-                        if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                        
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "fake" ) //Andrea 20200128 Try to force 0 to inputs.
-                        {
-                            input_signal = "x\"00000000\",";
-                        }
-                        else
-                        {
-
-                            input_signal = nodes[i].name;
-                            input_signal += UNDERSCORE;
-                            input_signal += DATAIN_ARRAY;
-                            input_signal += UNDERSCORE;
-                            input_signal += to_string(lsq_indx);
-                            input_signal += COMMA;
-                        }
-                        
-                        //netlist << "\t" << input_port << " => "  << input_signal;
-                        bbCountPrev += "\t" + input_port + " => "  + input_signal + "\n";
-                    }
+                } 
+                else 
+                { 
+                    input_port += UNDERSCORE; 
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port); 
                     
                 }
-                else
-                if ( nodes[i].inputs.input[lsq_indx].type == "l" )
+                
+                if ( nodes[i].inputs.input[lsq_indx].info_type == "fake" ) //Andrea 20200128 Try to force 0 to inputs.
                 {
-                    //netlist << COMMA << endl;
-                    //static int load_indx = 0;
-                    //io_rdPortsPrev_0_ready"
-
-                    if ( nodes[i].type == "LSQ" )
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        //input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                        input_port += UNDERSCORE;
-                        input_port += "ready";
-                    }
-                    else
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        input_port += "ready";
-                        input_port += "(";
-//                    input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-                        
-                        input_port += ")";
-                        
-                    }
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += READY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                    rdReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-
-                    
-                    if ( nodes[i].type == "LSQ" )
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        //input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                        input_port += UNDERSCORE;
-                        input_port += "valid";
-                    }
-                    else
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        input_port += "valid";
-                        input_port += "(";
-                        //input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                        input_port += ")";
-                        
-                    }
+                    input_signal = "'0',";
+                }
+                else
+                {
                     input_signal = nodes[i].name;
                     input_signal += UNDERSCORE;
                     input_signal += PVALID_ARRAY;
                     input_signal += UNDERSCORE;
                     input_signal += to_string(lsq_indx);
                     input_signal += COMMA;
+                }
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+                bbValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
 
-                    rdValidPrev += "\t" + input_port + " => "  + input_signal  + "\n";
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
+                
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "bbReadyToPrevs";
+                //input_port += UNDERSCORE;
+                if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += READY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
 
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+                bbReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
+
+                
+                if ( nodes[i].type == "MC" )
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "bb_stCountArray";
+                    //input_port += UNDERSCORE;
+                    if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
                     
-                    if ( nodes[i].type == "LSQ" )
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "fake" ) //Andrea 20200128 Try to force 0 to inputs.
                     {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        //input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                        input_port += UNDERSCORE;
-                        input_port += "bits";
+                        input_signal = "x\"00000000\",";
                     }
                     else
                     {
-                        input_port = "io";
+
+                        input_signal = nodes[i].name;
+                        input_signal += UNDERSCORE;
+                        input_signal += DATAIN_ARRAY;
+                        input_signal += UNDERSCORE;
+                        input_signal += to_string(lsq_indx);
+                        input_signal += COMMA;
+                    }
+                    
+                    //netlist << "\t" << input_port << " => "  << input_signal;
+                    bbCountPrev += "\t" + input_port + " => "  + input_signal + "\n";
+                }
+                
+            }
+            else
+            if ( nodes[i].inputs.input[lsq_indx].type == "l" )
+            {
+                //netlist << COMMA << endl;
+                //static int load_indx = 0;
+                //io_rdPortsPrev_0_ready"
+
+                if ( nodes[i].type == "LSQ" )
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "ready";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    input_port += "ready";
+                    input_port += "(";
+//                    input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+                    
+                    input_port += ")";
+                    
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += READY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                rdReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+                
+                if ( nodes[i].type == "LSQ" )
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                    input_port += "(";
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += ")";
+                    
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += PVALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                rdValidPrev += "\t" + input_port + " => "  + input_signal  + "\n";
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+                
+                if ( nodes[i].type == "LSQ" )
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "bits";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsPrev";
+                    input_port += UNDERSCORE;
+                    input_port += "bits";
+                    input_port += "(";
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += ")";
+                    
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += DATAIN_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                //input_signal += COMMA;
+
+                rdBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
+                //netlist << "\t" << input_port << " => "  << input_signal;
+
+                load_indx++;
+
+
+            }
+            else
+            if ( nodes[i].inputs.input[lsq_indx].type == "s" )
+            {
+                
+                //netlist << COMMA << endl;
+                //static int store_add_indx = 0;
+                //static int store_data_indx = 0;
+
+                if ( nodes[i].type == "LSQ" )
+                {
+                    //"io_wrAddrPorts_0_ready"
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    {
+                        input_port += "Addr";
+                        input_port += "Ports";
                         input_port += UNDERSCORE;
-                        input_port += "rdPortsPrev";
-                        input_port += UNDERSCORE;
-                        input_port += "bits";
-                        input_port += "(";
-                        //input_port += to_string(load_indx);
+                        //input_port += to_string(store_add_indx);
                         input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                        input_port += ")";
-                        
                     }
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += DATAIN_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    //input_signal += COMMA;
+                    else
+                    {
+                        input_port += "Data";
 
-                    rdBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
-                    //netlist << "\t" << input_port << " => "  << input_signal;
+                        input_port += "Ports";
+                        input_port += UNDERSCORE;
+                        //input_port += to_string(store_data_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                    load_indx++;
+                    }
+                    
+
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                }
+                else
+                {
+                    //"io_wrAddrPorts_0_ready"
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    {
+                        input_port += "Addr";
+                    }
+                    else
+                    {
+                        input_port += "Data";
+                    }
+                    
+                    input_port += "Ports";
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                    input_port += "(";
+                    //input_port += to_string(store_data_indx);
+                    input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    input_port += ")";
 
 
                 }
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += PVALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    stAdValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
                 else
-                if ( nodes[i].inputs.input[lsq_indx].type == "s" )
+                    stDataValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
+
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+                
+                
+                if ( nodes[i].type == "LSQ" )
                 {
-                    
-                    //netlist << COMMA << endl;
-                    //static int store_add_indx = 0;
-                    //static int store_data_indx = 0;
 
-                    if ( nodes[i].type == "LSQ" )
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
                     {
-                        //"io_wrAddrPorts_0_ready"
-                        input_port = "io";
+                        input_port += "Addr";
+                        input_port += "Ports";
                         input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //input_port += to_string(store_add_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                        //input_port += to_string(store_add_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                        }
-                        else
-                        {
-                            input_port += "Data";
-
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //input_port += to_string(store_data_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                        }
                         
-
-                        input_port += UNDERSCORE;
-                        input_port += "valid";
                     }
                     else
                     {
-                        //"io_wrAddrPorts_0_ready"
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                        }
-                        else
-                        {
-                            input_port += "Data";
-                        }
-                        
+                        input_port += "Data";
+
                         input_port += "Ports";
                         input_port += UNDERSCORE;
-                        input_port += "valid";
+                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                        //input_port += to_string(store_data_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                    }
+                    
+
+                    input_port += UNDERSCORE;
+                    input_port += "ready";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    {
+                        input_port += "Addr";
+                        input_port += "Ports";
+                        input_port += UNDERSCORE;
+                        input_port += "ready";
+                        input_port += "(";
+                        //input_port += to_string(store_add_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                        input_port += ")";
+                    }
+                    else
+                    {
+                        input_port += "Data";
+                        input_port += "Ports";
+                        input_port += UNDERSCORE;
+                        input_port += "ready";
                         input_port += "(";
                         //input_port += to_string(store_data_indx);
                         input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
                         input_port += ")";
-
-
                     }
                     
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += PVALID_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
+                }
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += READY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
 
+                if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    stAdReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
+                else
+                    stDataReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
+
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+
+                
+                if ( nodes[i].type == "LSQ" )
+                {
+          
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
                     if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        stAdValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
-                    else
-                        stDataValidPrev += "\t" + input_port + " => "  + input_signal + "\n";
-
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-
-                    
-                    
-                    if ( nodes[i].type == "LSQ" )
                     {
-
-                        input_port = "io";
+                        input_port += "Addr";
+                        input_port += "Ports";
                         input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                            //input_port += to_string(store_add_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                        //input_port += to_string(store_add_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                            
-                        }
-                        else
-                        {
-                            input_port += "Data";
+                        store_add_indx++;
 
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                            //input_port += to_string(store_data_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                        }
-                        
-
-                        input_port += UNDERSCORE;
-                        input_port += "ready";
                     }
                     else
                     {
-                        input_port = "io";
+                        input_port += "Data";
+                        input_port += "Ports";
                         input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            input_port += "ready";
-                            input_port += "(";
-                            //input_port += to_string(store_add_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                        //input_port += to_string(store_data_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                            input_port += ")";
-                        }
-                        else
-                        {
-                            input_port += "Data";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            input_port += "ready";
-                            input_port += "(";
-                            //input_port += to_string(store_data_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+                        store_data_indx++;
 
-                            input_port += ")";
-                        }
                         
                     }
                     
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += READY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        stAdReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
-                    else
-                        stDataReadyPrev += "\t" + input_port + " => "  + input_signal + "\n";
-
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-
-
-                    
-                    if ( nodes[i].type == "LSQ" )
-                    {
-            
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                            //input_port += to_string(store_add_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                            store_add_indx++;
-
-
-                        }
-                        else
-                        {
-                            input_port += "Data";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                            //input_port += to_string(store_data_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                            store_data_indx++;
-
-                            
-                        }
-                        
-                        input_port += UNDERSCORE;
-                        input_port += "bits";
-
-                    }
-                    else
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "wr";
-                        if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        {
-                            input_port += "Addr";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            input_port += "bits";
-                            input_port += "(";
-                            //input_port += to_string(store_add_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                            input_port += ")";
-                            store_add_indx++;
-                        }
-                        else
-                        {
-                            input_port += "Data";
-                            input_port += "Ports";
-                            input_port += UNDERSCORE;
-                            input_port += "bits";
-                            input_port += "(";
-                            //input_port += to_string(store_data_indx);
-                            input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
-
-                            input_port += ")";
-                            store_data_indx++;
-
-                        }
-                    }
-                    
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += DATAIN_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    //input_signal += COMMA;
-
-                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
-                        stAdBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
-                    else
-                        stDataBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
-
-                    //netlist << "\t" << input_port << " => "  << input_signal;
-                    
-
+                    input_port += UNDERSCORE;
+                    input_port += "bits";
 
                 }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "wr";
+                    if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    {
+                        input_port += "Addr";
+                        input_port += "Ports";
+                        input_port += UNDERSCORE;
+                        input_port += "bits";
+                        input_port += "(";
+                        //input_port += to_string(store_add_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
 
-                            
+                        input_port += ")";
+                        store_add_indx++;
+                    }
+                    else
+                    {
+                        input_port += "Data";
+                        input_port += "Ports";
+                        input_port += UNDERSCORE;
+                        input_port += "bits";
+                        input_port += "(";
+                        //input_port += to_string(store_data_indx);
+                        input_port += to_string(nodes[i].inputs.input[lsq_indx].port);
+
+                        input_port += ")";
+                        store_data_indx++;
+
+                    }
+                }
+                
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += DATAIN_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                //input_signal += COMMA;
+
+                if ( nodes[i].inputs.input[lsq_indx].info_type == "a" )
+                    stAdBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
+                else
+                    stDataBitsPrev += "\t" + input_port + " => "  + input_signal + COMMA + "\n";
+
+                //netlist << "\t" << input_port << " => "  << input_signal;
+                
+
+
             }
 
-            netlist << bbReadyPrev;
-            netlist << bbValidPrev;
-            netlist << bbCountPrev;
-            netlist << rdReadyPrev;
-            netlist << rdValidPrev;
-            netlist << rdBitsPrev;
-            netlist << stAdReadyPrev;
-            netlist << stAdValidPrev;
-            netlist << stAdBitsPrev;
-            netlist << stDataReadyPrev;
-            netlist << stDataValidPrev;
-            netlist << stDataBitsPrev;
-
-            string rdReadyNext = "";
-            string rdValidNext = "";
-            string rdBitsNext = "";
-            string emptyReady = "";
-            string emptyValid = "";
-
-
-            for ( int lsq_indx = 0; lsq_indx < nodes[i].outputs.size; lsq_indx++ )
-            {    
-                //cout << "LSQ output "<< lsq_indx << " = " << nodes[i].outputs.output[lsq_indx].type << "port = " << nodes[i].outputs.output[lsq_indx].port << "info_type = " <<nodes[i].outputs.output[lsq_indx].info_type << endl;     
-
-                if ( nodes[i].outputs.output[lsq_indx].type == "c" )
-                {
-                    //LANA REMOVE???
-                    netlist << COMMA << endl;
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "bbValids";
-                    //input_port += UNDERSCORE;
-                if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += VALID_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                    netlist << "\t" << input_port << " => "  << input_signal << endl;
-
-                    
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "bbReadyToNexts";
-                    input_port += UNDERSCORE;
-                    if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += NREADY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    //input_signal += COMMA;
-
-                    netlist << "\t" << input_port << " => "  << input_signal;
-
-                    
-                }
-                else
-                if ( nodes[i].outputs.output[lsq_indx].type == "l" )
-                {
-                    //static int load_indx = 0;
-
-                    //netlist << COMMA << endl;
-
-                    if ( nodes[i].type == "LSQ" )
-                    {
-
-                        //io_rdPortsPrev_0_ready"
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                        //input_port += to_string(load_indx);
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-
-                        input_port += UNDERSCORE;
-                        input_port += "ready";
-                    }
-                    else
-                    {
-                        //io_rdPortsPrev_0_ready"
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        input_port += "ready";
-                        input_port += "(";
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-                        input_port += ")";
-    
-                    }
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += NREADY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-                    rdReadyNext += "\t" + input_port + " => "  + input_signal + "\n";
-
-                    
-                    
-                    if ( nodes[i].type == "LSQ" )
-                    {
-
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-
-                        input_port += UNDERSCORE;
-                        input_port += "valid";
-                    }
-                    else
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        input_port += "valid";
-                        input_port += "(";
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-                        input_port += ")";
                         
-                    }
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += VALID_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
+        }
 
-                // netlist << "\t" << input_port << " => "  << input_signal << endl;
-                    rdValidNext += "\t" + input_port + " => "  + input_signal + "\n";
+        netlist << bbReadyPrev;
+        netlist << bbValidPrev;
+        netlist << bbCountPrev;
+        netlist << rdReadyPrev;
+        netlist << rdValidPrev;
+        netlist << rdBitsPrev;
+        netlist << stAdReadyPrev;
+        netlist << stAdValidPrev;
+        netlist << stAdBitsPrev;
+        netlist << stDataReadyPrev;
+        netlist << stDataValidPrev;
+        netlist << stDataBitsPrev;
 
-                    
-                    if ( nodes[i].type == "LSQ" )
-                    {
+        string rdReadyNext = "";
+        string rdValidNext = "";
+        string rdBitsNext = "";
+        string emptyReady = "";
+        string emptyValid = "";
 
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
 
-                        input_port += UNDERSCORE;
-                        input_port += "bits";
-                    }
-                    else
-                    {
-                        input_port = "io";
-                        input_port += UNDERSCORE;
-                        input_port += "rdPortsNext";
-                        input_port += UNDERSCORE;
-                        input_port += "bits";
-                        input_port += "(";
-                        input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-                        input_port += ")";
+        for ( int lsq_indx = 0; lsq_indx < nodes[i].outputs.size; lsq_indx++ )
+        {    
+            //cout << "LSQ output "<< lsq_indx << " = " << nodes[i].outputs.output[lsq_indx].type << "port = " << nodes[i].outputs.output[lsq_indx].port << "info_type = " <<nodes[i].outputs.output[lsq_indx].info_type << endl;     
 
-                    }
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += DATAOUT_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                // netlist << "\t" << input_port << " => "  << input_signal; 
-                    rdBitsNext += "\t" + input_port + " => "  + input_signal + "\n";
-                    load_indx++;
-                    
-
-                }
-                else
-                if ( nodes[i].outputs.output[lsq_indx].type == "s" )
-                {
-                    //LANA REMOVE???
-                    netlist << COMMA << endl;
-                    static int store_indx = 0;
-
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "wrpValids";
-                    input_port += UNDERSCORE;
-                    //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                    //input_port += to_string(store_indx);
-                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += VALID_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    input_signal += COMMA;
-
-                    netlist << "\t" << input_port << " => "  << input_signal << endl;
-
-                    
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "wrReadyToPrevs";
-                    input_port += UNDERSCORE;
-                    //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
-                    //input_port += to_string(store_indx);
-                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
-
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += NREADY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    //input_signal += COMMA;
-
-                    netlist << "\t" << input_port << " => "  << input_signal;
-                    
-                    store_indx++;
-
-                }
-                else
-                if ( nodes[i].outputs.output[lsq_indx].type == "e" )
-                {
-                    
-                    //netlist << COMMA << endl;
-                    static int store_indx = 0;
-
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "Empty_Valid";
-
-                    
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += VALID_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    
-                    if ( nodes[i].type != "LSQ" ) // Andrea 20200117 Added to be compatible with chisel LSQ
-                        input_signal += COMMA;
-
-                    //netlist << "\t" << input_port << " => "  << input_signal << endl;
-                    emptyValid += "\t" + input_port + " => "  + input_signal + "\n";
-
-                    
-                    input_port = "io";
-                    input_port += UNDERSCORE;
-                    input_port += "Empty_Ready";
-
-                    input_signal = nodes[i].name;
-                    input_signal += UNDERSCORE;
-                    input_signal += NREADY_ARRAY;
-                    input_signal += UNDERSCORE;
-                    input_signal += to_string(lsq_indx);
-                    //input_signal += COMMA;
-
-                    //netlist << "\t" << input_port << " => "  << input_signal; 
-                    emptyReady += "\t" + input_port + " => "  + input_signal + "\n";
-                    
-                    store_indx++;
-
-                }
-
-                            
-            }
-
-            netlist << rdReadyNext;
-            netlist << rdValidNext;
-            netlist << rdBitsNext;
-            netlist << emptyValid;
-            
-            if ( nodes[i].type != "LSQ" ) // Andrea 20200117 Added to be compatible with chisel LSQ
+            if ( nodes[i].outputs.output[lsq_indx].type == "c" )
             {
-                netlist << emptyReady;
+                //LANA REMOVE???
+                netlist << COMMA << endl;
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "bbValids";
+                //input_port += UNDERSCORE;
+                if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += VALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+                
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "bbReadyToNexts";
+                input_port += UNDERSCORE;
+                if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += NREADY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                //input_signal += COMMA;
+
+                netlist << "\t" << input_port << " => "  << input_signal;
+
                 
             }
+            else
+            if ( nodes[i].outputs.output[lsq_indx].type == "l" )
+            {
+                //static int load_indx = 0;
+
+                //netlist << COMMA << endl;
+
+                if ( nodes[i].type == "LSQ" )
+                {
+
+                    //io_rdPortsPrev_0_ready"
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                    //input_port += to_string(load_indx);
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "ready";
+                }
+                else
+                {
+                    //io_rdPortsPrev_0_ready"
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    input_port += "ready";
+                    input_port += "(";
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+                    input_port += ")";
+ 
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += NREADY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+                rdReadyNext += "\t" + input_port + " => "  + input_signal + "\n";
+
+                
+                
+                if ( nodes[i].type == "LSQ" )
+                {
+
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    input_port += "valid";
+                    input_port += "(";
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+                    input_port += ")";
+                    
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += VALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+               // netlist << "\t" << input_port << " => "  << input_signal << endl;
+                rdValidNext += "\t" + input_port + " => "  + input_signal + "\n";
+
+                
+                if ( nodes[i].type == "LSQ" )
+                {
+
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+
+                    input_port += UNDERSCORE;
+                    input_port += "bits";
+                }
+                else
+                {
+                    input_port = "io";
+                    input_port += UNDERSCORE;
+                    input_port += "rdPortsNext";
+                    input_port += UNDERSCORE;
+                    input_port += "bits";
+                    input_port += "(";
+                    input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+                    input_port += ")";
+
+                }
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += DATAOUT_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+               // netlist << "\t" << input_port << " => "  << input_signal; 
+                rdBitsNext += "\t" + input_port + " => "  + input_signal + "\n";
+                load_indx++;
+                
+
+            }
+            else
+            if ( nodes[i].outputs.output[lsq_indx].type == "s" )
+            {
+                //LANA REMOVE???
+                netlist << COMMA << endl;
+                static int store_indx = 0;
+
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "wrpValids";
+                input_port += UNDERSCORE;
+                //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                //input_port += to_string(store_indx);
+                input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += VALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                input_signal += COMMA;
+
+                netlist << "\t" << input_port << " => "  << input_signal << endl;
+
+                
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "wrReadyToPrevs";
+                input_port += UNDERSCORE;
+                //if ( nodes[i].type == "MC" )  { input_port +="("; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); input_port +=")"; } else { input_port += UNDERSCORE; input_port += to_string(nodes[i].inputs.input[lsq_indx].port); }
+                //input_port += to_string(store_indx);
+                input_port += to_string(nodes[i].outputs.output[lsq_indx].port);
+
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += NREADY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                //input_signal += COMMA;
+
+                netlist << "\t" << input_port << " => "  << input_signal;
+                
+                store_indx++;
+
+            }
+            else
+            if ( nodes[i].outputs.output[lsq_indx].type == "e" )
+            {
+                
+                //netlist << COMMA << endl;
+                static int store_indx = 0;
+
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "Empty_Valid";
+
+                
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += VALID_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                
+                if ( nodes[i].type != "LSQ" ) // Andrea 20200117 Added to be compatible with chisel LSQ
+                    input_signal += COMMA;
+
+                //netlist << "\t" << input_port << " => "  << input_signal << endl;
+                emptyValid += "\t" + input_port + " => "  + input_signal + "\n";
+
+                
+                input_port = "io";
+                input_port += UNDERSCORE;
+                input_port += "Empty_Ready";
+
+                input_signal = nodes[i].name;
+                input_signal += UNDERSCORE;
+                input_signal += NREADY_ARRAY;
+                input_signal += UNDERSCORE;
+                input_signal += to_string(lsq_indx);
+                //input_signal += COMMA;
+
+                //netlist << "\t" << input_port << " => "  << input_signal; 
+                emptyReady += "\t" + input_port + " => "  + input_signal + "\n";
+                
+                store_indx++;
+
+            }
+
+                        
+        }
+
+        netlist << rdReadyNext;
+        netlist << rdValidNext;
+        netlist << rdBitsNext;
+        netlist << emptyValid;
+        
+        if ( nodes[i].type != "LSQ" ) // Andrea 20200117 Added to be compatible with chisel LSQ
+        {
+            netlist << emptyReady;
+            
+        }
 
 //             input_signal = nodes[i].name;
 //             input_signal += UNDERSCORE;
@@ -2479,7 +2478,7 @@ void write_components ( )
 //             
 // 
 //             netlist << "\t" << "io_queueEmpty" << " => " << input_signal << endl;
-            
+        
         }
         else
         if ( nodes[i].type == "Exit" )
@@ -3256,125 +3255,6 @@ void write_intro (  )
 
 }
 
-void write_lsq_signal(std::string name, bool isInput, std::string type, bool isFinalSignal) {
-    netlist << "\t" << name << " : ";
-    if (isInput) {netlist << "in ";} else {netlist << "out ";}
-    netlist << type;
-    if (!isFinalSignal) {netlist << ";";}
-    netlist << endl;
-}
-
-void write_lsq_declaration ( )
-{
-    for (int i = 0; i < components_in_netlist; i++) 
-    {
-        if (nodes[i].type == "LSQ") {
-            netlist << endl;
-            netlist << "component " << nodes[i].name << endl;
-            netlist << "port(" << endl;
-            write_lsq_signal("clock", true, "std_logic", false);
-            write_lsq_signal("reset", true, "std_logic", false);
-            write_lsq_signal("io_memIsReadyForLoads", true, "std_logic", false);
-            write_lsq_signal("io_memIsReadyForStores", true, "std_logic", false);
-            write_lsq_signal("io_storeDataOut", false, "std_logic_vector("+ to_string(get_lsq_datawidth()-1) +" downto 0)", false);
-            //write_lsq_signal("io_storeAddrOut", false, "std_logic_vector("+ to_string(get_lsq_addresswidth()-1) +" downto 0)", false);
-            write_lsq_signal("io_storeAddrOut", false, "std_logic_vector("+ to_string(nodes[i].address_size-1) +" downto 0)", false);
-            write_lsq_signal("io_storeEnable", false, "std_logic", false);
-            
-
-            std::string name = "";
-            
-            for ( int lsq_indx = 0; lsq_indx < nodes[i].inputs.size; lsq_indx++ ) {
-                if ( nodes[i].inputs.input[lsq_indx].type == "c" ) {
-                    name = "io_bbpValids_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    write_lsq_signal(name, true, "std_logic", false);
-                    name = "io_bbReadyToPrevs_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    write_lsq_signal(name, false, "std_logic", false);
-
-                } else if ( nodes[i].inputs.input[lsq_indx].type == "l" ) {
-                    name = "io_rdPortsPrev_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_ready";
-                    write_lsq_signal(name, false, "std_logic", false);
-                    name = "io_rdPortsPrev_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_valid";
-                    write_lsq_signal(name, true, "std_logic", false);
-                    name = "io_rdPortsPrev_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_bits";
-                    write_lsq_signal(name, true, "std_logic_vector("+ to_string(get_lsq_datawidth()-1) +" downto 0)", false);
-                } else if (nodes[i].inputs.input[lsq_indx].type == "s") {
-                    name = "io_wr";
-                    if (nodes[i].inputs.input[lsq_indx].info_type == "a") {
-                        name += "AddrPorts_";
-                    } else {
-                        name += "DataPorts_";
-                    }
-                    name += to_string(nodes[i].inputs.input[lsq_indx].port) + "_valid";
-                    write_lsq_signal(name, true, "std_logic", false);
-
-                    name = "io_wr";
-                    if (nodes[i].inputs.input[lsq_indx].info_type == "a") {
-                        name += "AddrPorts_";
-                    } else {
-                        name += "DataPorts_";
-                    }
-                    name += to_string(nodes[i].inputs.input[lsq_indx].port) + "_ready";
-                    write_lsq_signal(name, false, "std_logic", false);
-
-                    name = "io_wr";
-                    if (nodes[i].inputs.input[lsq_indx].info_type == "a") {
-                        name += "AddrPorts_";
-                        name += to_string(nodes[i].inputs.input[lsq_indx].port) + "_bits";
-                        //write_lsq_signal(name, true, "std_logic_vector("+ to_string(get_lsq_addresswidth()-1) +" downto 0)", false);
-                        write_lsq_signal(name, true, "std_logic_vector("+ to_string(nodes[i].address_size-1) +" downto 0)", false);
-                    } else {
-                        name += "DataPorts_";
-                        name += to_string(nodes[i].inputs.input[lsq_indx].port) + "_bits";
-                        write_lsq_signal(name, true, "std_logic_vector("+ to_string(get_lsq_datawidth()-1) + " downto 0)", false);
-                    }
-                }
-            }
-
-            for ( int lsq_indx = 0; lsq_indx < nodes[i].outputs.size; lsq_indx++ ) {
-                if ( nodes[i].outputs.output[lsq_indx].type == "c" ) {
-                    //name = "io_bbValids_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    name = "io_bbValids_"+to_string(nodes[i].outputs.output[lsq_indx].port);
-                    write_lsq_signal(name, false, "std_logic", false);
-                    //name = "io_bbReadyToNexts_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    name = "io_bbReadyToNexts_"+to_string(nodes[i].outputs.output[lsq_indx].port);
-                    write_lsq_signal(name, false, "std_logic", false);
-                } else if ( nodes[i].outputs.output[lsq_indx].type == "l" ) {
-                    //name = "io_rdPortsNext_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_ready";
-                    name = "io_rdPortsNext_"+to_string(nodes[i].outputs.output[lsq_indx].port) + "_ready";
-                    write_lsq_signal(name, true, "std_logic", false);
-                    //name = "io_rdPortsNext_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_valid";
-                    name = "io_rdPortsNext_"+to_string(nodes[i].outputs.output[lsq_indx].port) + "_valid";
-                    write_lsq_signal(name, false, "std_logic", false);
-                    //name = "io_rdPortsNext_"+to_string(nodes[i].inputs.input[lsq_indx].port) + "_bits";
-                    name = "io_rdPortsNext_"+to_string(nodes[i].outputs.output[lsq_indx].port) + "_bits";
-                    write_lsq_signal(name, false, "std_logic_vector("+ to_string(get_lsq_datawidth()-1) + " downto 0)", false);
-                } else if ( nodes[i].outputs.output[lsq_indx].type == "s" ) {
-                    //name = "io_wrpValids_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    name = "io_wrpValids_"+to_string(nodes[i].outputs.output[lsq_indx].port);
-                    write_lsq_signal(name, true, "std_logic", false);
-                    //name = "io_wrReadyToPrevs_"+to_string(nodes[i].inputs.input[lsq_indx].port);
-                    name = "io_wrReadyToPrevs_"+to_string(nodes[i].outputs.output[lsq_indx].port);
-                    write_lsq_signal(name, false, "std_logic", false);
-                }
-                else if ( nodes[i].outputs.output[lsq_indx].type == "e" ) {
-                    write_lsq_signal("io_Empty_Valid", false, "std_logic", false);
-                }
-            }
-            
-            
-
-            write_lsq_signal("io_loadDataIn", true, "std_logic_vector("+ to_string(get_lsq_datawidth()-1) + "  downto 0)", false);
-            //write_lsq_signal("io_loadAddrOut", false, "std_logic_vector("+ to_string(get_lsq_addresswidth()-1) +"  downto 0)", false);
-            write_lsq_signal("io_loadAddrOut", false, "std_logic_vector("+ to_string(nodes[i].address_size-1) +"  downto 0)", false);
-            write_lsq_signal("io_loadEnable", false, "std_logic", true);
-            netlist << ");" << endl;
-            netlist << "end component;" << endl;
-        }
-      
-    }
-}
-
 void vhdl_writer::write_vhdl ( string filename, int indx )
 {
     
@@ -3408,8 +3288,7 @@ void vhdl_writer::write_vhdl ( string filename, int indx )
 
     write_signals (  );
     
-    write_lsq_declaration ( );
-
+    
     netlist  << endl << "begin" << endl;
 
     write_connections ( indx );
